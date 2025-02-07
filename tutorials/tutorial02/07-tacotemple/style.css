@@ -1,0 +1,76 @@
+body {
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+
+/* i was having a lot of trouble, but I didn't realize that using main would 
+fix the majority of my issues... i still don't fully understand setting
+the column width, but with this ratio, I was able to get the desired gap 
+the main category helps me create the two main columns to divide the cards
+in between
+*/
+
+main {
+    display: grid;
+    grid-template-columns: 700px 100px;
+    /* grid-row-gap: 10px;
+    grid-column-gap: 10px; */
+    gap: 10px;
+}
+
+/* the cards column helps me divide the info within each card like the description
+and the image into seperate spaces.. pushes descritpion on left and image on right
+i also set the border up on each card with this section
+*/
+.card{
+    box-sizing: border-box;
+    border: solid 1px #CCC;
+    background-color: white;
+    
+    width: 30vw;
+    height: 30vh;
+    /* text-align: center; */
+    font-size: 20px;
+    padding-left: 20px;
+    /* display: flex; */
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto;
+    /* grid-row-gap: 2px; */
+    gap: 0;
+    
+}
+
+/* this section helps me align the div section (header, p, and span) into a column */
+.card div{
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+/* this section help align the image properly on its side of the column */
+.card img{
+    width: 200px;
+    height: 200px;
+    margin: auto;
+}
+
+/* I was attempting to move the margin of the header, but its not necessary */
+h2{
+    margin-bottom: 10px;
+}
+
+/* I changed the font of the p section and was trying to mess with the margin */
+p {
+    font-size: 25px;
+    margin-top: 0;
+    margin-bottom: 5;
+}
+
+/* I changed the font size of the span section and pushed the span section higher with padding */
+span{
+    margin-top: 0;
+    font-size: 25px;
+    padding-bottom: 20px;
+}
+

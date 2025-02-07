@@ -1,0 +1,29 @@
+/* Make sure that your @import statement is at the top of your CSS file  */
+
+@import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bungee+Tint&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playwrite+AU+NSW:wght@100..400&display=swap');
+
+
+
+html {
+    scroll-behavior: smooth;
+}
+
+body * {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, Helvetica, sans-serif;
+    margin: 0;
+}
+
+h1{
+    /* font-family: "Roboto", serif; */
+     font-family: "Bungee Tint", serif;
+}
+
+h2{
+     font-family: "Playwrite AU NSW", serif;
+}

@@ -1,0 +1,47 @@
+html {
+    scroll-behavior: smooth;
+}
+
+body * {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, Helvetica, sans-serif;
+    margin: 0;
+}
+
+/* create additional rules below:  */
+main{
+    display: flex;                  
+    height: 100vh;                          /* full height of vp */
+    flex-direction: column;                 /* stack section vertically */
+    justify-content: flex-start;            /* start from top */
+    align-items: center;                    /* centers sections horizontally */
+    
+}
+
+section{
+    width: 100%;                            /* each section takes full width */
+    height: 100vh;                          /* 150 vp height */
+    display: flex;                          /* enable flex */
+    justify-content: center;                /* center content vertically inside section */
+    align-items: center;                    /* center content horizontally */
+    flex-direction: column;                 /* stack elements vertically */
+}
+
+#home{
+    background-color:aliceblue;
+}
+
+#bio{
+    background-color:cadetblue
+}
+
+#portfolio{
+    background-color:darkgray;
+}
+
+#contact{
+    background-color:honeydew;
+}

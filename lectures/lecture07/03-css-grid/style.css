@@ -1,0 +1,80 @@
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@300;400&display=swap");
+
+/* SET UP */
+
+* {
+  box-sizing: border-box;
+}
+
+ul {
+  padding-left: 1.5rem;
+}
+
+body {
+  font-family: "Poppins", sans-serif;
+  color: #333;
+  background-color: snow;
+  margin: 0 auto;
+  max-width: 1000px;
+}
+
+.item {
+  padding: 8px;
+  background-color: white;
+  border: 4px solid tomato;
+  border-radius: 6px;
+  box-shadow: 0px 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.height-50 {
+  height: 50vh;
+}
+
+/* Task 3 */
+
+.container {
+  display: grid;
+  grid-template-columns: 25% 50% 25%;
+}
+
+header {
+  /* assign the child to the right spot  */
+  grid-column-start: 1;
+  grid-column-end: 4;
+  /* shortcuts for the same thing above  */
+  /* grid-column: 1 / 4;
+  grid-column: 1 / span 3; */
+}
+
+nav {
+  grid-column: 2 span 1;
+  grid-row: 2 span 2;
+}
+
+aside {
+  grid-column: 4 span 4;
+  grid-row: 2 / 4;
+}
+
+section {
+  /* sidebar */
+  grid-row: 2 / span 2;
+}
+
+main {
+  grid-column:  2 / span 1;
+  grid-row: 3 / span 1;
+}
+
+footer {
+
+}
+
+
+
+@media (max-width: 1020px) {
+}
+
+
+@media (max-width: 720px) {
+}
