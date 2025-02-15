@@ -8,7 +8,7 @@ body {
 }
 
 /* Begin Debugging Code */
-header,
+/* header,
 main,
 main section,
 nav,
@@ -31,7 +31,7 @@ main,
     padding: 10px;
     margin: 10px;
     font-family: monospace;
-}
+} */
 
 /* End Debugging Code */
 
@@ -44,16 +44,159 @@ main,
     top:0;
     left: 0;
     margin: 0;
-    background-color: hotpink;
+    background-color: white;
     display: flex;
+    justify-content: space-between;
+    padding-left: 30px;
+    padding-right: 30px;
+    align-items: center;
+}
+
+.user{
+    color: black;
+    padding-right: 10px;
+    font-size: 20px;
+    text-decoration: none;
+    
+}
+
+.login{
+    color: darkcyan;
+    text-decoration: none;
+    font-size: 20px;
+}
+
+.aside-user{
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.aside-user img{
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.aside-name{
+    padding-left: 40px;
+    font-size: 30px;
+}
+
+.suggestions-list{
+    display: flex;
+    flex-direction: row;
+    /* align-items: center; */
     justify-content: space-between;
 }
 
-/* When targeting a class you use .(dot) and the name of the class */
+.story-out{
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+}
 
-.post{
-    min-height: 300px;
+.story-user2{
+    display: flex;
+    flex-direction: row;
+    text-align: center;
+    object-fit: cover;
+    padding: 10px;
+}
+
+.story-user2 img{
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.story-name2{
+    font-size: 16px;
+    font-weight: bold;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+} 
+
+.suggestions-list{
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+.suggestions-title{
+    padding-top: 20px;
+    padding-bottom: 20px;
+}
+
+.aside-user2{
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    /* justify-content: space-between; */
+    object-fit: cover;
+    
 }
 
 
-@media (max-width: 800px) {}
+.user-image img{
+    width: 75px;
+    height: 75px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.user-name{
+    font-size: 25px;
+    padding-left: 20px;
+}
+
+.Follow{
+    margin-top: 5px;
+    color: blue;
+    padding-left: 20px;
+    font-size: 14px;
+}
+
+.suggestions-panel{
+    position: fixed;
+    top:100px;
+    left: 65vw;
+    background-color: #F4F4F4;
+    min-height: 80vh;
+    width: calc(35vw - 20px);
+}
+
+main{
+    width: calc(60vw - 30px);
+    margin-top: 25px;
+    margin-left: 5vw;
+}
+/* When targeting a class you use .(dot) and the name of the class */
+
+.story-out{
+    background-color: white;
+    border: solid 1px black;
+    margin-bottom: 50px;
+    min-height: 100px;
+}
+.post{
+    min-height: 300px;
+    border: solid 1px black;
+    background-color: white;
+    margin-bottom: 50px;
+}
+
+
+@media (max-width: 800px) {
+    .suggestions-panel{
+        display: none;
+    }
+
+    main{
+        width: auto;
+        margin-left: 2vw;
+        margin-right: 2vw;
+    }
+}
