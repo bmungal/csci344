@@ -1,0 +1,111 @@
+/* Basic styles */
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f4f4f4;
+    overflow-x: hidden;
+}
+
+/* Navbar styling */
+.navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #333;
+    color: white;
+    padding: 15px 20px;
+    height: 40px;
+}
+
+.navbar h1 {
+    margin: 0;
+}
+
+.nav-links {
+    list-style: none;
+    padding: 0;
+}
+
+.menu-toggle {
+    display: none;
+    /* Hide hamburger on larger screens */
+}
+
+.nav-links {
+    position: static;
+    display: flex;
+    width: auto;
+    background: none;
+    column-gap: 20px;
+}
+
+.nav-links a {
+    text-decoration: none;
+    color: white;
+    display: block;
+}
+
+/* Show menu when active */
+.nav-links.active {
+    right: 0;
+}
+
+/* Hamburger menu button */
+.menu-toggle {
+    display: none;
+}
+
+.bar {
+    width: 25px;
+    height: 3px;
+    background-color: white;
+    margin: 6px 0 0 0;
+    transition: 0.3s;
+}
+
+/* Animate hamburger menu into "X" when active */
+/* Adjusted hamburger to X transition */
+.menu-toggle.active .bar:nth-child(1) {
+    transform: translateY(9px) rotate(45deg);
+}
+
+.menu-toggle.active .bar:nth-child(2) {
+    opacity: 0;
+}
+
+.menu-toggle.active .bar:nth-child(3) {
+    transform: translateY(-9px) rotate(-45deg);
+}
+
+
+@media (max-width: 768px) {
+
+    .nav-links {
+        position: absolute;
+        top: 54px;
+        right: -300px;
+        width: 300px;
+        background: #333;
+        text-align: center;
+        transition: right 0.3s ease-in-out;
+        flex-direction: column;
+    }
+
+    .nav-links {
+        height: calc(100vh - 40px);
+    }
+
+    .nav-links li {
+        border-bottom: 1px solid #444;
+        padding: 15px;
+    }
+
+    .menu-toggle {
+        display: flex;
+        flex-direction: column;
+        cursor: pointer;
+        background-color: transparent;
+        border: 0;
+    }
+}
