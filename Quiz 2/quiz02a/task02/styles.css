@@ -1,0 +1,42 @@
+body {
+    max-width: 1000px;
+    margin: 40px auto;
+    font-family: Arial, Helvetica, sans-serif;
+    background: #F0F0F0;
+}
+
+button {
+    margin-bottom: 30px;
+}
+
+#track-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.track {
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    border: solid 1px #CCC;
+    background: #FFF;
+}
+
+.track>div {
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+}
+
+.track img {
+    width: 100px;
+    height: 100%;
+    object-fit: cover;
+}
+
+.track p,
+.track h3 {
+    margin: 0;
+}
