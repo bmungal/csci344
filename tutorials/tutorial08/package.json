@@ -1,0 +1,17 @@
+{
+  "name": "tutorial08",
+  "scripts": {
+    "build": "vite build",
+    "dev": "concurrently \"tailwindcss -i ./src/css/input.css -o public/output.css --watch\" \"vite dev\""
+  },
+  "devDependencies": {
+    "concurrently": "*",
+    "tailwindcss": "^3.4.11",
+    "vite": "*"
+  },
+  "dependencies": {
+    "antd": "^5.24.5",
+    "react": "*",
+    "react-dom": "*"
+  }
+}
