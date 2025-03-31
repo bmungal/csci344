@@ -1,0 +1,52 @@
+body {
+    max-width: 1000px;
+    margin: 40px auto;
+    font-family: Arial, Helvetica, sans-serif;
+    background: #F0F0F0;
+}
+
+p,
+li,
+span,
+div {
+    line-height: 1.5rem;
+    font-size: 1.1rem;
+    margin-bottom: 10px;
+}
+
+button {
+    margin-bottom: 30px;
+}
+
+#wiki-previews {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+}
+
+.card {
+    display: grid;
+    grid-template-columns: 150px 1fr;
+    border: solid 1px #CCC;
+    background: #FFF;
+    padding: 10px;
+}
+
+.card>div {
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 6px;
+}
+
+.card img {
+    width: 150px;
+    height: auto;
+    object-fit: cover;
+}
+
+.card p,
+.card h3 {
+    margin: 0;
+}
