@@ -1,255 +1,261 @@
+html {
+  scroll-behavior: smooth;
+}
+
 body * {
-    box-sizing: border-box;
+  box-sizing: border-box;
+  font-family: Arial, Helvetica, sans-serif;
 }
 
 body {
-    margin: 0;
-    background: #F4F4F4;
+  margin: 0;
+  background: #F4F4F4;
+  color: #333;
 }
 
-/* Begin Debugging Code */
-/* header,
-main,
-main section,
-nav,
-.logo {
-    border: solid 2px #CCC;
-    padding: 10px;
-    margin: 10px;
+/* Navbar */
+.top-nav {
+  position: sticky;
+  top: 0;
+  left: 0;
+  width: 100%;
+  background-color: white;
+  margin: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 30px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  border-radius: 8px;
 }
 
-.logo {
-    font-size: 1em;
-    font-weight: normal;
+.user-controls {
+  display: flex;
+  align-items: center;
 }
 
-aside,
-body>header,
-main,
-.news-feed {
-    border: solid 4px #000;
-    padding: 10px;
-    margin: 10px;
-    font-family: monospace;
-} */
-
-/* End Debugging Code */
-
-/* stopped watching video @10:09 */
-/* In order to get sticky to work, you have to give it a starting point/ something to "stick to" */
-.top-nav{
-    position: sticky;
-    /* position: fixed; */
-    /* width: 100vw; */
-    top:0;
-    left: 0;
-    margin: 0;
-    background-color: white;
-    display: flex;
-    justify-content: space-between;
-    padding-left: 30px;
-    padding-right: 30px;
-    align-items: center;
+.username {
+  margin-right: 15px;
+  font-size: medium;
 }
 
-.user{
-    color: black;
-    padding-right: 10px;
-    font-size: 20px;
-    text-decoration: none;
-    
+.logout-button {
+  padding: 5px 10px;
+  background-color: #f4f4f4;
+  border: none;
+  cursor: pointer;
+  border-radius: 5px;
 }
 
-.login{
-    color: darkcyan;
-    text-decoration: none;
-    font-size: 20px;
+.logout-button:hover {
+  background-color: #e0e0e0;
 }
 
-.aside-user{
-    display: flex;
-    flex-direction: row;
-    align-items: center;
+/* Post Styles */
+.post {
+  border: solid 1px #ddd;
+  background-color: white;
+  margin-bottom: 50px;
+  padding: 20px;
+  border-radius: 8px;
 }
 
-.aside-user img{
-    width: 150px;
-    height: 150px;
-    border-radius: 50%;
-    object-fit: cover;
+.post-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
 }
 
-.aside-name{
-    padding-left: 40px;
-    font-size: 30px;
+.post-username {
+  font-weight: bold;
+  font-family: 'Comfortaa', sans-serif;
 }
 
-.suggestions-list{
-    display: flex;
-    flex-direction: row;
-    /* align-items: center; */
-    justify-content: space-between;
+.post-image {
+  width: 100%;
+  height: auto;
+  margin-bottom: 10px;
+  border-radius: 8px;
 }
 
-.suggest{
-    font-size: 20px;
-    color: gray;
+.post-icons {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
 }
 
-.suggestions-title{
-    font-size: 30px;
-}
-.story-out{
-    display: flex;
-    flex-direction: row;
-    align-items: flex-start;
+.left-icons i {
+  margin-right: 10px;
 }
 
-.story-user2{
-    display: flex;
-    flex-direction: row;
-    text-align: center;
-    object-fit: cover;
-    padding: 10px;
+.post-likes,
+.post-caption,
+.post-comments,
+.comment {
+  margin-bottom: 10px;
 }
 
-.story-user2 img{
-    width: 70px;
-    height: 70px;
-    border-radius: 50%;
-    object-fit: cover;
+.add-comment {
+  display: flex;
+  align-items: center;
+  border-top: solid 1px #ddd;
+  padding-top: 10px;
 }
 
-.story-name2{
-    font-size: 16px;
-    font-weight: bold;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-} 
-
-.suggestions-list{
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-}
-.suggestions-title{
-    padding-top: 20px;
-    padding-bottom: 20px;
+.add-comment i {
+  margin-right: 10px;
 }
 
-.aside-user2{
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    /* justify-content: space-between; */
-    object-fit: cover;
-    
+.add-comment input {
+  flex-grow: 1;
+  border: none;
+  outline: none;
+  padding: 5px;
 }
 
-
-.user-image img{
-    width: 75px;
-    height: 75px;
-    border-radius: 50%;
-    object-fit: cover;
+.post-link {
+  color: #005fcc;
+  text-decoration: none;
+  margin-left: 10px;
 }
 
-.user-name{
-    font-size: 25px;
-    padding-left: 20px;
+.post-link:hover {
+  text-decoration: underline;
 }
 
-.Follow{
-    margin-top: 5px;
-    color: blue;
-    padding-left: 20px;
-    font-size: 14px;
+/* Stories */
+.stories {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  padding: 10px 0;
+  overflow-x: auto;
+  background-color: white;
+  margin-bottom: 10px;
+  border-radius: 8px;
 }
 
-.suggestions-panel{
-    position: fixed;
-    top:100px;
-    left: 65vw;
-    background-color: #F4F4F4;
-    min-height: 80vh;
-    width: calc(35vw - 20px);
+.stories-container {
+  margin-left: 10px;
+  display: flex;
+  gap: 20px;
 }
 
-main{
-    width: calc(55vw - 30px);
-    margin-top: 25px;
-    margin-left: 7vw;
-}
-/* When targeting a class you use .(dot) and the name of the class */
-
-.story-out{
-    background-color: white;
-    border: solid 1px black;
-    margin-bottom: 50px;
-    min-height: 100px;
-}
-.post{
-    min-height: 300px;
-    border: solid 1px black;
-    background-color: white;
-    margin-bottom: 50px;
+.story {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
 }
 
-.top-post{
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
+.story-pic {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  margin-bottom: 5px;
 }
 
-.top-post img{
-    height: 20px;
-    width: 0px;
-    /* padding-right: 20px; */
-    margin-right: 50px;
-    margin-top: 20px;
-    margin-bottom: 20px;
-    
+.story-username {
+  font-size: 0.9em;
+  color: #333;
 }
 
-.top-post header{
-    padding-left: 20px;
-    padding-top: 20px;
-    padding-bottom: 20px;
-    font-weight: bold;
-    font-size: 25px;
+/* Suggestions */
+.suggestions-panel {
+  position: fixed;
+  top: 120px;
+  left: 65vw;
+  background-color: rgb(252, 252, 252);
+  min-height: 80vh;
+  width: 32vw;
+  padding: 20px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
 }
 
-.post1{
-    /* width: calc(40vw - 30px);
-    height: 400px; */
-    /* width: auto;
-    height: auto; */
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
+.user-profile {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+  font-size: x-large;
+  font-weight: 700;
 }
 
-.icons img{
-    width: 30px;
-    height: 30px;
-    background-color: white;
+.profile-pic {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  margin-right: 20px;
 }
 
-.likes{
-    font-weight: bold;
-    font-size: 30px;
+.main-profile-pic {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  margin-right: 20px;
 }
+
+.suggestions-list {
+  display: grid;
+  grid-template-columns: 80px auto 80px;
+  gap: 30px;
+}
+
+.suggestion-container {
+  display: contents;
+  align-items: center;
+}
+
+.suggestion-info {
+  margin-left: 10px;
+}
+
+.suggested-text {
+  display: block;
+  font-size: 0.8em;
+  color: #8b8989;
+  font-weight: 600;
+}
+
+.follow-link {
+  color: #005fcc;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.follow-link:hover {
+  text-decoration: underline;
+}
+
+/* Layout */
+main {
+  width: 60vw;
+  margin-top: 23px;
+  margin-left: 2vw;
+}
+
 
 @media (max-width: 800px) {
-    .suggestions-panel{
-        display: none;
-    }
+  .suggestions-panel {
+    display: none;
+  }
 
-    main{
-        width: auto;
-        margin-left: 3vw;
-        margin-right: 3vw;
-    }
+  main {
+    width: auto;
+    margin-left: 2vw;
+    margin-right: 2vw;
+  }
+}
+
+/* Fonts */
+h1,
+.main-username,
+h3,
+h4,
+h5,
+h6 {
+  font-family: 'Comfortaa', cursive;
 }

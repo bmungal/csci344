@@ -1,169 +1,233 @@
 <!DOCTYPE html>
 <html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Updated Photo App</title>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" />
+        <link href="https://fonts.googleapis.com/css2?family=Comfortaa&display=swap" rel="stylesheet" />
+        <link rel="stylesheet" href="styles.css" />
+    </head>
+    <body>
+        <header class="top-nav">
+            <h1 class="logo">Photo App</h1>
+            <nav>
+            <div class="user-controls">
+                <h4 class="username">CooperDejean</h4>
+                <button class="logout-button">Sign Out</button>
+            </div>
+            </nav>
+        </header>
 
-<head>
-    <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="./styles.css">
-    <title>HW02 Starter Code</title>
-</head>
-
-<body>
-    <!-- Navigation fixed-->
-    <header class = "top-nav">
-        <h1 class="logo">
-            <!-- Logo / title goes here. -->
-             Photo App
-        </h1>
-        <nav>
-            <!-- Navigation goes here. -->
-             <a href ="#" class="user">CooperDejean</a>
-             <a href ="#" class="login">sign out</a>
-        </nav>
-    </header>
-    <main> 
-
-        <!-- Right hand panel w suggestions, fixed-->
-        <aside class="suggestions-panel">
-            <section class = "aside-user">
-                <img src="./images/CooperDejean.jpg" alt="User picture">
-                <header class="aside-name">CooperDeJean</header>
-            </section>
-            <header class="suggestions-title">Suggestions for you</header> 
-            <section class="suggestions-list">
-                <section class="aside-user2">
-                    <div class="user-image">
-                        <img src="./images/traviskelce" alt="User picture">
+        <main>
+            <aside class="suggestions-panel">
+                <header>
+                    <div class="user-profile">
+                    <img src="./images/CooperDejean.jpg" alt="User Profile" class="main-profile-pic" />
+                    <span class="main-username">CooperDejean</span>
                     </div>
-                    <div class="user-name">
-                        <header>tkelce</header>
-                        <header class="suggest">Suggested for you</header> 
-                    </div>
-                    <header class="Follow">Follow</header>
-                </section> 
-                 <section class="aside-user2">
-                    <div class="user-image">
-                        <img src="./images/patrickmahomes" alt="User picture">
-                    </div>
-                    <div class="user-name">
-                        <header>patmahomes</header>
-                        <header class="suggest">Suggested for you</header>
-                    </div>
-                    <header class="Follow">Follow</header>
-                </section> 
-                <section class="aside-user2">
-                    <div class="user-image">
-                        <img src="./images/DeAndre Hopkins.jpg" alt="User picture">
-                    </div>
-                    <div class="user-name">
-                        <header>drehopkins</header>
-                        <header class="suggest">Suggested for you</header>
-                    </div>
-                    <header class="Follow">Follow</header>
-                </section> 
-                <section class="aside-user2">
-                    <div class="user-image">
-                        <img src="./images/Xavier Worthy.jpg" alt="User picture">
-                    </div>
-                    <div class="user-name">
-                        <header>xworthy</header>
-                        <header class="suggest">Suggested for you</header>
-                    </div>
-                    <header class="Follow">Follow</header>
-                </section> 
-                <section class="aside-user2">
-                    <div class="user-image">
-                        <img src="./images/Kareem Hunt.jpg" alt="User picture">
-                    </div>
-                    <div class="user-name">
-                        <header>khunt</header>
-                        <header class="suggest">Suggested for you</header>
-                    </div>
-                    <header class="Follow">Follow</header>
-                </section> 
-                 <!-- <section class = "aside-user2">
-                    <div class="user1"><img src="./images/AjBrown" alt="User picture">
-                        <header class="story-name">ajbrown</header>
-                    </div>
-                </section>  
-                 <section class = "aside-user2">
-                    <div class="user1"><img src="./images/KennyPickett" alt="User picture">
-                        <header class="story-name">kpickett</header>
-                    </div>
-                </section>  
-                <section class = "aside-user2">
-                    <div class="user1"><img src="./images/Jalen Carter" alt="User picture">
-                        <header class="story-name">jcarter</header>
-                    </div>
-                </section>   -->
-
                 </header>
-                
+            <section>
+                <span class="suggested-text" style="margin-bottom: 30px; font-size: 20px; margin-top: 30px;">Suggestions for you</span>
+                <div class="suggestions-list">
+                <!-- Suggestions inserted here -->
+                <div class="suggestion-container">
+                        <img src="https://picsum.photos/50?random=1" alt="Suggested User 1" class="profile-pic">
+                        <div class="suggestion-info">
+                            <strong class="username">traviskelce</strong>
+                            <span class="suggested-text">suggested for you</span>
+                    </div>
+                    <a href="#" class="follow-link">Follow</a>
+                </div>
 
+                <div class="suggestion-container">
+                    <img src="https://picsum.photos/50?random=2" alt="Suggested User 2" class="profile-pic">
+                    <div class="suggestion-info">
+                        <strong class="username">patmahomes</strong>
+                        <span class="suggested-text">suggested for you</span>
+                    </div>
+                    <a href="#" class="follow-link">Follow</a>
+                </div>
+
+                <div class="suggestion-container">
+                    <img src="https://picsum.photos/50?random=3" alt="Suggested User 3" class="profile-pic">
+                    <div class="suggestion-info">
+                        <strong class="username">drehopkins</strong>
+                        <span class="suggested-text">suggested for you</span>
+                    </div>
+                    <a href="#" class="follow-link">Follow</a>
+                </div>
+
+                <div class="suggestion-container">
+                    <img src="https://picsum.photos/50?random=4" alt="Suggested User 4" class="profile-pic">
+                    <div class="suggestion-info">
+                        <strong class="username">xworthy</strong>
+                        <span class="suggested-text">suggested for you</span>
+                    </div>
+                    <a href="#" class="follow-link">Follow</a>
+                </div>
+
+                <div class="suggestion-container">
+                    <img src="https://picsum.photos/50?random=5" alt="Suggested User 5" class="profile-pic">
+                    <div class="suggestion-info">
+                        <strong class="username">khunt</strong>
+                        <span class="suggested-text">suggested for you</span>
+                    </div>
+                    <a href="#" class="follow-link">Follow</a>
+                </div>
+
+                </div>
             </section>
-        </aside>
+            </aside>
 
-        <!-- Custom classes were made to style individual sections like top-nav and post -->
-        <section class="news-feed">
-            <!-- Stories -->
-            <header class="story-out">
-                <section class = "story-user2">
-                    <div class="user1"><img src="./images/JalenHurts.jpg" alt="User picture">
-                        <header class="story-name">jalenhurts</header>
-                    </div>
-                </section>  
-                <section class = "story-user2">
-                    <div class="user1"><img src="./images/SaquonBarkley" alt="User picture">
-                        <header class="story-name">saquonbarkley</header>
-                    </div>
-                </section>  
-                 <section class = "story-user2">
-                    <div class="user1"><img src="./images/AjBrown" alt="User picture">
-                        <header class="story-name">ajbrown</header>
-                    </div>
-                </section>  
-                 <section class = "story-user2">
-                    <div class="user1"><img src="./images/KennyPickett" alt="User picture">
-                        <header class="story-name">kpickett</header>
-                    </div>
-                </section>  
-                <section class = "story-user2">
-                    <div class="user1"><img src="./images/Jalen Carter" alt="User picture">
-                        <header class="story-name">jcarter</header>
-                    </div>
-                </section>  
-            </section>  
-                
+            <section class="news-feed">
+            <header class="stories">
+                <div class="stories-container">
+                <!-- Stories inserted here -->
+                <div class="story">
+                        <img src="https://picsum.photos/50?random=11" class="story-pic" alt="Jalen Hurts">
+                        <span class="story-username">jalenhurts</span>
+                </div>
+
+                <div class="story">
+                    <img src="https://picsum.photos/50?random=12" class="story-pic" alt="Saquon Barkley">
+                    <span class="story-username">saquonbarkley</span>
+                </div>
+
+                <div class="story">
+                    <img src="https://picsum.photos/50?random=13" class="story-pic" alt="Aj Brown">
+                    <span class="story-username">ajbrown</span>
+                </div>
+
+                <div class="story">
+                    <img src="https://picsum.photos/50?random=14" class="story-pic" alt="Kenny Pickett">
+                    <span class="story-username">kpickett</span>
+                </div>
+
+                <div class="story">
+                    <img src="https://picsum.photos/50?random=15" class="story-pic" alt="Jalen Carter">
+                    <span class="story-username">jcarter</span>
+                </div>
+
+                </div>
             </header>
 
-            <!-- Posts -->
-            <section class = "post">
-                <div class="top-post">
-                    <header>CooperDeJean</header>
-                    <img src="./images/3dots" alt="3 dots" class="dots">
+            <section class="post">
+                <div class="post-header">
+                    <h2 class="post-username">CooperDejean</h2>
+                <i class="fas fa-ellipsis-h"></i>
                 </div>
-                <img src="./images/touchdown" alt="touchdown" class="post1">
-                <div class="icons">
-                    <img src="./images/heart" alt="heart">
-                    <img src="./images/bubble" alt="message bubble">
-                    <img src="./images/plane" alt="plane icon">
-                    <img src="./images/bookmark" alt="bookmark">
+                <img src="./images/touchdown" alt="Touchdown" class="post-image" />
+                <div class="post-icons">
+                    <div class="left-icons">
+                        <i class="far fa-heart"></i>
+                        <i class="far fa-comment"></i>
+                        <i class="far fa-paper-plane"></i>
+                    </div>
+                    <i class="far fa-bookmark"></i>
                 </div>
-                <header class="likes">180k likes</header>
-                
+                <div class="post-likes"><strong>180k likes</strong></div>
+                <div class="post-caption">
+                    <strong>CooperDejean</strong> What a play! <a href="#">more</a>
+                </div>
+                <div class="post-comments">
+                    <div class="comment"><strong>fan123</strong> Amazing game!</div>
+                </div>
+                <div class="add-comment">
+                    <i class="far fa-smile"></i>
+                    <input type="text" placeholder="Add a comment..." />
+                    <a href="#" class="post-link">Post</a>
+                </div>
             </section>
-            <section class = "post">
-                Post 2
-            </section>
-            <section class = "post">
-                Post 3
-            </section>
-            <section class = "post">
-                Post 4
-            </section>
-        </section>
-    </main>
-</body>
 
+            <!-- Post 2 -->
+            <section class="post">
+                <div class="post-header">
+                    <h2 class="post-username">saquonbarkley</h2>
+                    <i class="fas fa-ellipsis-h"></i>
+                </div>
+                <img src="https://picsum.photos/500?random=21" alt="Workout" class="post-image" />
+                <div class="post-icons">
+                    <div class="left-icons">
+                        <i class="far fa-heart"></i>
+                        <i class="far fa-comment"></i>
+                        <i class="far fa-paper-plane"></i>
+                    </div>
+                    <i class="far fa-bookmark"></i>
+                </div>
+                <div class="post-likes"><strong>96k likes</strong></div>
+                <div class="post-caption">
+                    <strong>saquonbarkley</strong> Getting that work in. <a href="#">more</a>
+                </div>
+                <div class="post-comments">
+                <div class="comment"><strong>gymrat22</strong> Inspiring stuff!</div>
+                </div>
+                <div class="add-comment">
+                    <i class="far fa-smile"></i>
+                    <input type="text" placeholder="Add a comment..." />
+                    <a href="#" class="post-link">Post</a>
+                </div>
+            </section>
+
+            <!-- Post 3 -->
+            <section class="post">
+                <div class="post-header">
+                    <h2 class="post-username">ajbrown</h2>
+                    <i class="fas fa-ellipsis-h"></i>
+                </div>
+                <img src="https://picsum.photos/500?random=22" alt="Training Camp" class="post-image" />
+                <div class="post-icons">
+                    <div class="left-icons">
+                        <i class="far fa-heart"></i>
+                        <i class="far fa-comment"></i>
+                        <i class="far fa-paper-plane"></i>
+                    </div>
+                    <i class="far fa-bookmark"></i>
+                </div>
+                <div class="post-likes"><strong>74k likes</strong></div>
+                <div class="post-caption">
+                    <strong>ajbrown</strong> Focused and ready. <a href="#">more</a>
+                </div>
+                <div class="post-comments">
+                    <div class="comment"><strong>nflfan88</strong> Let's go!!</div>
+                </div>
+                <div class="add-comment">
+                    <i class="far fa-smile"></i>
+                    <input type="text" placeholder="Add a comment..." />
+                    <a href="#" class="post-link">Post</a>
+                </div>
+            </section>
+
+            <!-- Post 4 -->
+            <section class="post">
+                <div class="post-header">
+                    <h2 class="post-username">kpickett</h2>
+                    <i class="fas fa-ellipsis-h"></i>
+                </div>
+                <img src="https://picsum.photos/500?random=23" alt="Locker Room" class="post-image" />
+                <div class="post-icons">
+                    <div class="left-icons">
+                        <i class="far fa-heart"></i>
+                        <i class="far fa-comment"></i>
+                        <i class="far fa-paper-plane"></i>
+                    </div>
+                    <i class="far fa-bookmark"></i>
+                </div>
+                <div class="post-likes"><strong>52k likes</strong></div>
+                <div class="post-caption">
+                    <strong>kpickett</strong> Eyes on the prize. <a href="#">more</a>
+                </div>
+                <div class="post-comments">
+                    <div class="comment"><strong>coachlife</strong> Dialed in.</div>
+                </div>
+                <div class="add-comment">
+                    <i class="far fa-smile"></i>
+                    <input type="text" placeholder="Add a comment..." />
+                    <a href="#" class="post-link">Post</a>
+                </div>
+            </section>
+            </section>
+        </main>
+    </body>
 </html>
