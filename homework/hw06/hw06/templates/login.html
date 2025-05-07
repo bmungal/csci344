@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <title>Photo App: Login</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.11.2/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/starter-client.css">
+    <link rel="stylesheet" href="/static/css/registration.css">
+
+    <style>
+        form {
+            max-width: 450px;
+        }
+    </style>
+    
+</head>
+<body>
+    <!-- Nav Bar still rendered via server-side template -->
+    {% include 'includes/navbar.html'  %}
+    <form method="POST" action="/login">
+        {% if message %}
+            <div class="error">{{ message }}</div>
+        {% endif %}
+        <div>
+            <label for="username">Username</label>
+            <input name="username" type="text" value="" id="username" placeholder="username"> 
+        </div>
+        <div>
+            <label for="password">Password</label>  
+            <input name="password" type="password" value="" id="password" placeholder="password"><br>
+        </div>
+        <button type="submit">Login</button>
+        <div class="get-help">
+            {% if can_register %}
+                <p>New user? <a href="/register">Register</a> for an account.</p>
+            {% endif %}
+            <p>Forgot your password? Reset it <a href="/reset-password">here</a>.</p>
+        </div>
+    </form> 
+</body>
+</html>

@@ -1,0 +1,58 @@
+form, section {
+    display: flex;
+    flex-direction: column;
+    max-width: 450px;
+    background: white;
+    padding: 50px;
+    margin-left: auto;
+    margin-right: auto;
+    margin-top: 10vh;
+    row-gap: 20px;
+    column-gap: 20px;
+    margin-bottom: 100px;
+}
+/* form > div {
+    margin-bottom: 20px;
+} */
+
+form label {
+    font-size: 0.9em;
+    width: 100%;
+    font-weight: 700;
+    margin-bottom: 3px;
+    display: inline-block;
+    font-family: 'Comfortaa';
+}
+
+form input {
+    background: #f2f2f2;
+    border: solid 0px #CCC;
+    padding: 10px 15px;
+    border-radius: 4px;
+    font-size: 1.1em;
+    width: 100%;
+}
+form button {
+    background-color: rgb(79, 67, 182);
+    color: white;
+    padding: 10px;
+    border-radius: 4px;
+    font-size: 1.3em;
+    border: solid 1px #FFF;
+    margin-top: 20px;
+}
+form .error {
+    color: #c91111;
+    margin-bottom: 10px;
+}
+
+form .error li {
+    margin-left: 0;
+}
+
+.get-help {
+    margin-top: 20px;
+}
+.get-help p {
+    margin: 6px 0px;
+}
