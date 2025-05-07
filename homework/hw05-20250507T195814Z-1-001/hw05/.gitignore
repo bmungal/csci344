@@ -1,0 +1,10 @@
+*.pyc
+.env
+node_modules
+build
+dist
+env
+.vscode
+.DS_Store
+.pytest_cache
+__pycache__

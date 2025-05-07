@@ -1,0 +1,32 @@
+[tool.poetry]
+name = "photo-app" 
+version = "0.1.0"
+description = "Photo App Web Application using Flask"
+authors = ["Sarah Van Wart <svanwart@unca.edu>"]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = ">=3.9,<4.0" 
+requests = "^2.32.3"
+Flask = "~3.1.0"
+Flask-Cors = "~5.0.0"
+Flask-RESTful = "~0.3.10"
+Flask-JWT-Extended = "~4.6.0"
+SQLAlchemy = "~2.0.36"
+Flask-SQLAlchemy = "~3.1.1"
+faker = "^37.1.0"
+dnspython = "^2.7.0"
+python-dotenv = "^1.1.0"
+psycopg = {extras = ["binary", "pool"], version = "^3.2.6"}
+isort = "^6.0.1"
+pytest = "^8.3.5"
+
+[tool.poetry.group.dev.dependencies]
+pylint-django = "*"
+
+[build-system]
+requires = ["poetry-core>=1.5.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+web = "gunicorn app:app"
