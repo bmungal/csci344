@@ -1,0 +1,105 @@
+<!-- based off of malwarebytes -->
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SusAbility Dashboard</title>
+  <link rel="stylesheet" href="dashboard.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">S</div>
+        <div class="brandText">
+          <div class="brandName">SusAbility</div>
+          <div class="brandSub">Credibility assistant</div>
+        </div>
+      </div>
+
+      <nav class="sideNav" aria-label="Dashboard navigation">
+        <button class="sideItem sideActive" data-route="dashboard">Dashboard</button>
+        <button class="sideItem" data-route="settings">Settings</button>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <!-- DASHBOARD -->
+      <section id="route-dashboard" class="route">
+        <h1>Hi there! 👋</h1>
+        <p class="muted">Here’s a summary of what SusAbility found for your current page.</p>
+
+        <div class="grid">
+          <div class="card">
+            <div class="cardTitle">Overall Score</div>
+            <div class="scoreRow">
+              <div class="scoreBig" id="dashScore">--</div>
+              <div class="pill" id="dashAdvisory">Neutral</div>
+            </div>
+            <div class="mutedSmall" id="dashUrl">No page loaded yet.</div>
+          </div>
+
+          <div class="card">
+            <div class="cardTitle">Signals</div>
+            <ul class="list" id="dashSignals"></ul>
+          </div>
+
+          <div class="card">
+            <div class="cardTitle">Breakdown</div>
+            <ul class="list" id="dashBreakdown"></ul>
+          </div>
+
+          <div class="card">
+            <div class="cardTitle">Outbound References</div>
+            <div class="chipScroll">
+              <ul class="chipList" id="dashRefs"></ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section id="route-settings" class="route hidden">
+        <h1>Settings</h1>
+        <p class="muted">Control how SusAbility gathers and displays information.</p>
+
+        <div class="card">
+          <div class="settingRow">
+            <div>
+              <div class="settingTitle">Use API fallbacks</div>
+              <div class="mutedSmall">If a field is missing locally, try APIs (Crossref / Semantic Scholar / RapidAPI).</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="setUseApis" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="settingRow">
+            <div>
+              <div class="settingTitle">Show outbound references</div>
+              <div class="mutedSmall">Display outbound links extracted from the page.</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="setShowRefs" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="settingRow">
+            <div>
+              <div class="settingTitle">Max references</div>
+              <div class="mutedSmall">Limit how many outbound links are shown.</div>
+            </div>
+            <input class="num" type="number" id="setMaxRefs" min="1" max="50" value="10" />
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>

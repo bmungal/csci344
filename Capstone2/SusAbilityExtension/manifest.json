@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "SusAbility",
+  "version": "0.0.1",
+  "description": "Credibility scoring and citation helper.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "SusAbility"
+  },
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*",
+    "https://api.crossref.org/*",
+    "https://api.semanticscholar.org/*",
+    "https://*.rapidapi.com/*",
+    "https://*.p.rapidapi.com/*"
+  ],
+  "background": {
+  "service_worker": "service_worker.js"
+},
+  "content_scripts":[
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at" : "document_idle"
+    }
+  ]
+}

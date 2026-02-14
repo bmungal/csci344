@@ -1,0 +1,57 @@
+
+         <!-- buttons have ids to help attach actions 
+             helplink is linked to a help page 
+             status div shows messages like "Clicked Analyze" -->
+        
+ <!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SusAbility</title>
+    <link rel="stylesheet" href="popup.css" />
+    <script src="popup.js" defer></script>
+  </head>
+ 
+  <body>
+    <header class="header">
+      <h1>SusAbility</h1>
+      <p class="subtitle">Credibility &amp; Citations assistant</p>
+
+      <div class="actions">
+        <button id="analyzeBtn" class="btn primary">Analyze page</button>
+        <button id="citeBtn" class="btn">Generate Citation</button>
+        <a id="helpLink" class="help" href="#">Help</a>
+      </div>
+
+      <div id="status" class="status" role="status" aria-live="polite"></div>
+    </header>
+
+    <main>
+      <!-- Results container (popup.js expects this) -->
+      <section id="results" class="results hidden">
+        <h2 id="signalsTitle">Signals</h2>
+        <ul id ="signalsList" class="signals">
+          <li><strong>Title:</strong> <span id="sigTitle">--</span></li>
+          <li><strong>Author:</strong> <span id="sigAuthor">--</span></li>
+          <li><strong>Publisher:</strong> <span id="sigPub">--</span></li>
+          <li><strong>Date:</strong> <span id="sigDate">--</span></li>
+          <li><strong>URL:</strong> <span id="sigURL">--</span></li>
+          <li><strong>Page Type:</strong> <span id="sigType">--</span></li>
+        </ul>
+
+        <h3>Score: <span id="scoreValue">--</span></h3>
+
+        <h3>Breakdown</h3>
+        <ul id="breakdownList"></ul>
+
+        <h3>Outbound references</h3>
+        <ul id="refsList"></ul>
+      </section>
+    </main>
+    <div class="bottomNav">
+      <button id="navDashboard" class="btn">Dashboard</button>
+      <button id="navSettings" class="btn">Settings</button>
+    </div>
+  </body>
+</html>
