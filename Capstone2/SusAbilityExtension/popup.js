@@ -180,12 +180,26 @@ function renderSignals(data) {
     ],
     ["DOI", data.doi || "No DOI found."],
     [
-      "Citation Count",
-      typeof data.citationCount === "number"
-        ? String(data.citationCount)
+      "References detected",
+      typeof data.referenceCount === "number"
+        ? String(data.referenceCount)
+        : "Not available.",
+    ],
+    [
+      "Cited by (Semantic Scholar)",
+      typeof data.citedByCount === "number"
+        ? String(data.citedByCount)
         : "Not available.",
     ],
     ["API Used", data.apiUsed ? "Yes" : "No"],
+    [
+      "Sources",
+      data.apiSources
+        ? Object.entries(data.apiSources)
+            .map(([k, v]) => `${k}=${v}`)
+            .join(", ")
+        : "None",
+    ],
     ["HTTPS", data.https ? "Yes" : "No"],
   ];
 
@@ -251,14 +265,14 @@ if (analyzeBtn) {
       renderResults(scoreObj, finalRefs);
 
       // END OF ANALYZE CALLBACK — put extra settings
-      // (example: save, navigate, update dashboard badge, etc.)
+      // (example: save, navigate, update dashboard badge, etc.) ??
 
       const signalLines = Array.from(
         document.querySelectorAll("#signalsList li"),
       ).map((li) => li.textContent);
 
       chrome.storage.local.set({
-        lastAnalysis: {
+        lastPopupAnalysis: {
           url: data.url || "",
           score: scoreObj.score,
           advisory: "Neutral",
@@ -292,6 +306,7 @@ if (helpLink) {
   });
 }
 
+// Action to open dashboard
 if (navDashboard) {
   navDashboard.addEventListener("click", () => {
     chrome.tabs.create({
@@ -300,6 +315,7 @@ if (navDashboard) {
   });
 }
 
+// Action to open Settings in dashboard
 if (navSettings) {
   navSettings.addEventListener("click", () => {
     chrome.tabs.create({

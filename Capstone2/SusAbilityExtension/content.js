@@ -32,6 +32,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       https: location.protocol === "https:",
       outboundLinks: getOutboundLinks() || [],
       pageType: getPageTypeFromJSONLD() || "Unknown",
+      textSample: getTextSample() || "",
+      referenceCountOnPage: countReferencesOnPage() || 0,
     });
   } catch (err) {
     sendResponse({ error: String(err) });
@@ -145,7 +147,32 @@ function getOutboundLinks() {
   return [...new Set(links)];
 }
 
+function getTextSample(maxChars = 2000) {
+  const main =
+    document.querySelector("article") ||
+    document.querySelector("main") ||
+    document.body;
 
+  const text = (main?.innerText || "").replace(/\s+/g, " ").trim();
+  return text.slice(0, maxChars);
+}
+
+function countReferencesOnPage() {
+  const headings = Array.from(document.querySelectorAll("h1,h2,h3,h4"));
+  const refHeading = headings.find((h) =>
+    /references|bibliography/i.test(h.textContent || "")
+  );
+  if (!refHeading) return 0;
+
+  // look for an <ol>/<ul> near the References heading
+  let el = refHeading.nextElementSibling;
+  for (let i = 0; i < 10 && el; i++) {
+    const list = el.matches("ol,ul") ? el : el.querySelector?.("ol,ul");
+    if (list) return list.querySelectorAll("li").length;
+    el = el.nextElementSibling;
+  }
+  return 0;
+}
 
 
 
@@ -350,7 +377,7 @@ function getAuthorFromDOM() {
       .map((el) => safeText(el.textContent))
       .filter(Boolean)
       .filter((t) => t.length >= 3)
-      .filter((t) => !/^(by|author|written|updated|posted)\b/i.test(t))
+      .filter((t) => !/^(by|author|written|updated|posted|Written by)\b/i.test(t))
       .filter(isProbablyAuthorName);
 
     if (names.length) return [...new Set(names)].join(", ");

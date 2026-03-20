@@ -57,6 +57,13 @@
               <ul class="chipList" id="dashRefs"></ul>
             </div>
           </div>
+          
+          <div class="card">
+            <div class="cardTitle">Political Bias & Reliability Chart</div>
+            <canvas id="biasChart" width="900" height="500" style="border:1px solid #ddd; max-width:100%;"></canvas>
+            <div class="mutedSmall" id="chartSummary">Run Analyze Page first.</div>
+            <ul class="list" id="whyList"></ul>
+          </div>
         </div>
       </section>
 
@@ -94,6 +101,18 @@
               <div class="mutedSmall">Limit how many outbound links are shown.</div>
             </div>
             <input class="num" type="number" id="setMaxRefs" min="1" max="50" value="10" />
+          </div>
+          <div class=" settingRow">
+             <div>
+            <div class="settingTitle">Database baselines</div>
+            <div class="mutedSmall">Reload the seeded domain baselines (useful after editing seed_sources.json).</div>
+            <div class="mutedSmall" id="dbStatus">Domains in DB: --</div>
+            </div>
+
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button id="btnReseedDb" class="num" type="button" style="cursor:pointer;">Reseed</button>
+            <button id="btnClearDb" class="num" type="button" style="cursor:pointer;">Clear</button>
+          </div>
           </div>
         </div>
       </section>
