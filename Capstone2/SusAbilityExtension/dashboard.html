@@ -98,26 +98,51 @@
           <div class="settingRow">
             <div>
               <div class="settingTitle">Max references</div>
+            </div>
               <div class="mutedSmall">Limit how many outbound links are shown.</div>
             </div>
             <input class="num" type="number" id="setMaxRefs" min="1" max="50" value="10" />
           </div>
-          <div class=" settingRow">
-             <div>
+        <div class="settingRow">
+          <div>
             <div class="settingTitle">Database baselines</div>
             <div class="mutedSmall">Reload the seeded domain baselines (useful after editing seed_sources.json).</div>
             <div class="mutedSmall" id="dbStatus">Domains in DB: --</div>
-            </div>
+          </div>
 
           <div style="display:flex; gap:8px; align-items:center;">
             <button id="btnReseedDb" class="num" type="button" style="cursor:pointer;">Reseed</button>
             <button id="btnClearDb" class="num" type="button" style="cursor:pointer;">Clear</button>
           </div>
+        </div>
+
+        <div class="settingRow">
+          <div>
+            <div class="settingTitle">MBFC Baselines (one-time import)</div>
+            <div class="mutedSmall">Fetch Media Bias Fact Check ratings once and store them locally (bias + factuality).</div>
+            <div class="mutedSmall" id="mbfcStatus">Not imported yet.</div>
           </div>
         </div>
-      </section>
-    </main>
-  </div>
+
+        <div class="settingRow">
+          <div>
+            <div class="settingTitle">RapidAPI Key</div>
+            <div class="mutedSmall">Stored locally. Used only when importing MBFC data.</div>
+          </div>
+          <input class="num" id="mbfcApiKey" type="password" placeholder="Paste RapidAPI key" />
+        </div>
+
+        <div class="settingRow">
+          <div>
+            <div class="settingTitle">Import MBFC database</div>
+            <div class="mutedSmall">This overwrites the local baseline database with MBFC ratings.</div>
+          </div>
+          <button id="btnFetchMbfc" class="num" type="button" style="cursor:pointer;">Fetch &amp; Seed</button>
+        </div>  
+        </div>
+              </section>
+            </main>
+          </div>
 
   <script src="dashboard.js"></script>
 </body>

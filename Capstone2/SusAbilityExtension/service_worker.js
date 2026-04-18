@@ -6,54 +6,198 @@
 import { putMany} from "./db.js";
 
 
-// this is a test function
-
-async function getRatingSmart(url) {
-  const host = getDomain(url); // e.g. "www.foxnews.com" => "foxnews.com"
-  const normalized = normalizeDomain(host); // e.g. "edition.cnn.com" => "cnn.com"
-
-  // Try a few candidates in order
-  const candidates = [];
-  if (host) candidates.push(host);
-  if (normalized && normalized !== host) candidates.push(normalized);
-
-  // If still not found, try stripping one more subdomain (e.g. "news.bbc.co.uk" -> "co.uk" is bad,
-  // but for most US sites this helps: "m.apnews.com" -> "apnews.com")
-  if (host.split(".").length > 2) {
-    candidates.push(host.split(".").slice(-2).join("."));
-  }
-
-  // console.log("[SusAbility] domain candidates:", {
-  //   url,
-  //   host,
-  //   normalized,
-  //   candidates,
-  // });
 
 
+async function getRatingSmart(urlOrHost) {
+  const host = String(urlOrHost || "").includes("://")
+    ? getDomain(urlOrHost)
+    : String(urlOrHost || "").replace(/^www\./, "");
 
-  for (const d of candidates) {
-    const r = await getRatingDirect(d);
-    if (r) return { domain: d, rating: r };
-  }
+  const normalized = normalizeDomain(host);
 
-  return { domain: normalized || host || "", rating: null };
-}
+  const req = indexedDB.open("susability");
 
-//rating test
-async function getRatingDirect(domain) {
-  return new Promise((resolve) => {
-    const req = indexedDB.open("susability");
+  const row = await new Promise((resolve, reject) => {
     req.onsuccess = () => {
       const db = req.result;
       const tx = db.transaction("sourceRatings", "readonly");
       const store = tx.objectStore("sourceRatings");
-      const g = store.get(domain);
-      g.onsuccess = () => resolve(g.result || null);
-      g.onerror = () => resolve(null);
+
+      findBestSeedRowForHost(store, normalized || host)
+        .then(resolve)
+        .catch(reject);
     };
-    req.onerror = () => resolve(null);
+    req.onerror = () => reject(req.error);
   });
+
+  return {
+    domain: normalized || host || "",
+    rating: row || null,
+  };
+}
+
+function getPoliticalBucketFromX(x) {
+  if (x <= -1.5) return "left";
+  if (x <= -0.5) return "lean_left";
+  if (x < 0.5) return "center";
+  if (x < 1.5) return "lean_right";
+  return "right";
+}
+
+// DB List of known domains
+const SOURCE_ALIASES = {
+  "msnbc.com": ["ms now", "msnbc"],
+  "foxnews.com": ["fox news"],
+  "abcnews.go.com": ["abc news"],
+  "abc.com": ["abc news"],
+  "aol.com": ["aol"],
+  "apple.news": ["apple news"],
+  "aljazeera.com": ["al jazeera"],
+  "apnews.com": ["associated press", "ap news", "ap-norc"],
+  "afp.com": ["agence france-presse", "afp"],
+  "washingtonpost.com": ["washington post"],
+  "nytimes.com": ["new york times", "nyt"],
+  "wsj.com": ["wall street journal", "wsj"],
+  "bbc.com": ["bbc", "bbc news"],
+  "npr.org": ["npr"],
+  "theguardian.com": ["the guardian"],
+  "reuters.com": ["reuters"],
+  "cnn.com": ["cnn"],
+  "usatoday.com": ["usa today"],
+  "time.com": ["time"],
+  "newsweek.com": ["newsweek"],
+  "forbes.com": ["forbes"],
+  "bloomberg.com": ["bloomberg"],
+  "politico.com": ["politico"],
+  "axios.com": ["axios"],
+  "propublica.org": ["propublica"],
+  "thehill.com": ["the hill"],
+  "washingtontimes.com": ["washington times"],
+};
+
+// small changes for tie breakers
+const OUTLET_PRIORS = {
+  "foxnews.com": 1.5,
+  "msnbc.com": -1.5,
+  "cnn.com": -0.75,
+  "nytimes.com": -0.75,
+  "washingtonpost.com": -0.5,
+  "reuters.com": 0,
+  "apnews.com": 0,
+  "npr.org": -0.5,
+  "wsj.com": 0.75,
+};
+
+const MEDIA_FAMILIES = {
+  fox: [
+    "foxnews.com",
+    "foxbusiness.com",
+    "foxweather.com",
+    "foxsports.com",
+    "outkick.com",
+    "foxnation.com",
+    "radio.foxnews.com",
+  ],
+  nbc: ["msnbc.com", "nbcnews.com", "ms.now"],
+  cnn: ["cnn.com"],
+  nyt: ["nytimes.com"],
+  wapo: ["washingtonpost.com"],
+  reuters: ["reuters.com"],
+  ap: ["apnews.com"],
+  wsj: ["wsj.com"],
+  npr: ["npr.org"],
+  pbs: ["pbs.org"],
+  abc: ["abcnews.go.com"],
+  cbs: ["cbsnews.com"],
+  bloomberg: ["bloomberg.com"],
+  politico: ["politico.com"],
+  axios: ["axios.com"],
+  propublica: ["propublica.org"],
+  hill: ["thehill.com"],
+  bbc: ["bbc.com", "bbc.co.uk"],
+  guardian: ["theguardian.com", "theguardian.co.uk"],
+  usatoday: ["usatoday.com"],
+};
+
+function normalizeLookupText(s) {
+  return String(s || "")
+    .toLowerCase()
+    .replace(/^www\./, "")
+    .replace(/https?:\/\//g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function coreHost(host) {
+  const raw = String(host || "")
+    .toLowerCase()
+    .replace(/^www\./, "")
+    .trim();
+  const parts = raw.split(".");
+  return parts.length >= 2 ? parts.slice(-2).join(".") : raw;
+}
+
+function getLookupVariantsForHost(host) {
+  const raw = String(host || "")
+    .toLowerCase()
+    .replace(/^www\./, "")
+    .trim();
+  const core = coreHost(raw);
+
+  return [
+    raw,
+    core,
+    normalizeLookupText(raw),
+    normalizeLookupText(core),
+    ...(SOURCE_ALIASES[core] || []),
+  ].filter(Boolean);
+}
+
+async function findBestSeedRowForHost(store, host) {
+  const variants = getLookupVariantsForHost(host);
+
+  // 1) exact key attempts first
+  for (const key of variants) {
+    const exact = await new Promise((resolve, reject) => {
+      const req = store.get(key);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    if (exact) return exact;
+  }
+
+  // 2) fallback: scan all rows and score approximate matches
+  const allRows = await new Promise((resolve, reject) => {
+    const req = store.getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+
+  const scored = allRows
+    .map((row) => {
+      const d = normalizeLookupText(row.domain || "");
+      const l = normalizeLookupText(row.label || "");
+      let score = 0;
+
+      for (const variant of variants) {
+        const v = normalizeLookupText(variant);
+        if (!v) continue;
+
+        if (d === v || l === v) score += 100;
+        else if (d.includes(v) || l.includes(v)) score += 35;
+        else if (v.includes(d) || v.includes(l)) score += 15;
+      }
+
+      // prefer cleaner/national matches over noisy local affiliate names
+      if (/\bfox\s+\d+\b/.test(d) || /\bfox\s+\d+\b/.test(l)) score -= 15;
+      if (/\bnews\b/.test(d) || /\bnews\b/.test(l)) score += 3;
+
+      return { row, score };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  return scored.length ? scored[0].row : null;
 }
 
  
@@ -94,6 +238,18 @@ function normalizeDomain(host) {
   if (parts.length <= 2) return host;
 
   return parts.slice(-2).join(".");
+}
+
+function sameMediaNetwork(hostA, hostB) {
+  const a = normalizeDomain(hostA || "");
+  const b = normalizeDomain(hostB || "");
+
+  if (!a || !b) return false;
+  if (a === b) return true;
+
+  return Object.values(MEDIA_FAMILIES).some(
+    (group) => group.includes(a) && group.includes(b),
+  );
 }
 
 function getDomain(url) {
@@ -150,19 +306,157 @@ function domainFromAnyUrl(u) {
   }
 }
 
-async function getRatingForHost(host) {
-  const candidates = [];
-  if (host) candidates.push(host);
-  const normalized = normalizeDomain(host);
-  if (normalized && normalized !== host) candidates.push(normalized);
-  if (host.split(".").length > 2)
-    candidates.push(host.split(".").slice(-2).join("."));
+const NON_EDITORIAL_EXACT_DOMAINS = new Set([
+  "facebook.com",
+  "m.facebook.com",
+  "twitter.com",
+  "x.com",
+  "instagram.com",
+  "youtube.com",
+  "youtu.be",
+  "t.co",
+  "wa.me",
+  "whatsapp.com",
+  "apps.apple.com",
+  "play.google.com",
+  "ap.org",
+]);
 
-  for (const d of candidates) {
-    const r = await getRatingDirect(d); // or getRating(d) if db.js works everywhere
-    if (r) return { domain: d, rating: r };
+const NON_EDITORIAL_DOMAIN_PATTERNS = [
+  "privacy",
+  "cookie",
+  "consent",
+  "account",
+  "login",
+  "signup",
+  "subscribe",
+  "subscriptions",
+  "help",
+  "support",
+  "advertis",
+  "analytics",
+  "tracking",
+  "doubleclick",
+  "googletagmanager",
+  "onetrust",
+  "privacyportal",
+  "legal",
+  "terms",
+  "policy",
+];
+
+const LOW_VALUE_REFERENCE_DOMAINS = new Set([
+  "factset.com",
+  "refinitiv.com",
+  "lipperalpha.refinitiv.com",
+]);
+
+function getRootishHost(hostname) {
+  const host = String(hostname || "")
+    .toLowerCase()
+    .replace(/^www\./, "")
+    .trim();
+  const parts = host.split(".");
+  return parts.length >= 2 ? parts.slice(-2).join(".") : host;
+}
+
+function isSameSiteOrSubdomain(linkHost, articleHost) {
+  const a = String(linkHost || "")
+    .toLowerCase()
+    .replace(/^www\./, "")
+    .trim();
+  const b = String(articleHost || "")
+    .toLowerCase()
+    .replace(/^www\./, "")
+    .trim();
+
+  if (!a || !b) return false;
+  if (a === b) return true;
+  return a.endsWith("." + b) || b.endsWith("." + a);
+}
+
+function isNonEditorialDomain(hostname) {
+  const host = getRootishHost(hostname);
+  if (!host) return true;
+
+  if (NON_EDITORIAL_EXACT_DOMAINS.has(host)) return true;
+  return NON_EDITORIAL_DOMAIN_PATTERNS.some((pattern) =>
+    host.includes(pattern),
+  );
+}
+
+function isLowValueReferenceDomain(hostname) {
+  const host = String(hostname || "")
+    .toLowerCase()
+    .replace(/^www\./, "")
+    .trim();
+  return LOW_VALUE_REFERENCE_DOMAINS.has(host);
+}
+
+function classifyOutboundLink(href, pageDomain = "") {
+  const host = domainFromAnyUrl(href);
+
+  if (!host) {
+    return {
+      host: "",
+      type: "invalid",
+      keepForNeighborhood: false,
+      weightMultiplier: 0,
+    };
   }
-  return { domain: normalized || host || "", rating: null };
+
+  if (
+    isSameSiteOrSubdomain(host, pageDomain) ||
+    sameMediaNetwork(host, pageDomain)
+  ) {
+    return {
+      host,
+      type: "self_or_same_family",
+      keepForNeighborhood: false,
+      weightMultiplier: 0,
+    };
+  }
+
+  if (isNonEditorialDomain(host)) {
+    return {
+      host,
+      type: "non_editorial",
+      keepForNeighborhood: false,
+      weightMultiplier: 0,
+    };
+  }
+
+  if (isLowValueReferenceDomain(host)) {
+    return {
+      host,
+      type: "low_value_reference",
+      keepForNeighborhood: true,
+      weightMultiplier: 0.2,
+    };
+  }
+
+  return {
+    host,
+    type: "editorial_or_institutional",
+    keepForNeighborhood: true,
+    weightMultiplier: 1.0,
+  };
+}
+
+// outbound link filtering helpers
+function getOutboundPositionWeight(index, total) {
+  if (!total || total <= 0) return 1.0;
+
+  const ratio = index / total;
+
+  if (ratio <= 0.2) return 1.6;
+  if (ratio <= 0.5) return 1.25;
+  if (ratio <= 0.8) return 0.95;
+  return 0.65;
+}
+
+async function getRatingForHost(host) {
+  return await getRatingSmart(host);
 }
 
 // used to extract domain for domain comparisions/ scoring
@@ -179,12 +473,11 @@ async function computeOutboundSkew(outboundLinks = [], pageDomain = "") {
   let n = 0;
 
   for (const href of outboundLinks) {
-    const host = domainFromAnyUrl(href);
-    if (!host) continue;
+    
+    const linkInfo = classifyOutboundLink(href, pageDomain);
+    const host = linkInfo.host;
 
-    // skip self-links 
-    if (pageDomain && normalizeDomain(host) === normalizeDomain(pageDomain))
-      continue;
+if (!linkInfo.keepForNeighborhood) continue;
 
     const { rating } = await getRatingForHost(host);
     if (!rating) {
@@ -199,6 +492,196 @@ async function computeOutboundSkew(outboundLinks = [], pageDomain = "") {
 
   return { counts, avgX: n ? sum / n : 0 };
 }
+
+// look at outbound sources and weighs them/ looks at linked neighborhoods of sources
+// filters out social platforms
+// places more weight on initial links
+async function computeWeightedOutboundNeighborhood(
+  outboundLinks = [],
+  pageDomain = "",
+) {
+  const counts = {
+    left: 0,
+    lean_left: 0,
+    center: 0,
+    lean_right: 0,
+    right: 0,
+    unknown: 0,
+  };
+
+  let weightedSum = 0;
+  let totalWeight = 0;
+  let ratedEditorialCount = 0;
+  let keptCount = 0;
+  let filteredCount = 0;
+
+  const reasons = [];
+  const filteredReasons = [];
+
+  for (let i = 0; i < outboundLinks.length; i++) {
+    const href = outboundLinks[i];
+    const linkInfo = classifyOutboundLink(href, pageDomain);
+    const host = linkInfo.host;
+
+    if (!linkInfo.keepForNeighborhood) {
+      filteredCount++;
+      if (filteredReasons.length < 10) {
+        filteredReasons.push(
+          `${host || "[invalid]"} -> filtered (${linkInfo.type})`,
+        );
+      }
+      continue;
+    }
+
+    keptCount++;
+
+    const { rating } = await getRatingForHost(host);
+    if (!rating) {
+      counts.unknown++;
+      if (reasons.length < 10) {
+        reasons.push(`${host} -> unrated (${linkInfo.type})`);
+      }
+      continue;
+    }
+
+    counts[rating.bucket] = (counts[rating.bucket] || 0) + 1;
+
+    const positionWeight = getOutboundPositionWeight(i, outboundLinks.length);
+    const finalWeight = linkInfo.weightMultiplier * positionWeight;
+
+    weightedSum += Number(rating.x || 0) * finalWeight;
+    totalWeight += finalWeight;
+    ratedEditorialCount++;
+
+    if (reasons.length < 10) {
+      reasons.push(
+        `${host} -> ${rating.bucket} (x=${rating.x}, w=${finalWeight.toFixed(2)}, type=${linkInfo.type})`,
+      );
+    }
+  }
+
+  let confidence = 0;
+  if (ratedEditorialCount >= 5) confidence = 1.0;
+  else if (ratedEditorialCount === 4) confidence = 0.85;
+  else if (ratedEditorialCount === 3) confidence = 0.7;
+  else if (ratedEditorialCount === 2) confidence = 0.45;
+  else if (ratedEditorialCount === 1) confidence = 0.2;
+
+  return {
+    counts,
+    avgX: totalWeight ? weightedSum / totalWeight : 0,
+    totalWeight,
+    ratedEditorialCount,
+    keptCount,
+    filteredCount,
+    confidence,
+    reasons,
+    filteredReasons,
+  };
+}
+
+function computeNeighborhoodAgreementSignals(
+  articleShiftTotal,
+  weightedNeighborhood,
+) {
+  const neighborhoodX = Number(weightedNeighborhood?.avgX || 0);
+  const articleDir = sign(articleShiftTotal);
+  const neighborhoodDir = sign(neighborhoodX);
+
+  let shift = 0;
+  const reasons = [];
+
+  if (articleDir && neighborhoodDir) {
+    if (articleDir === neighborhoodDir) {
+      shift += 0.25;
+      reasons.push("article shift aligns with linked-source neighborhood");
+    } else {
+      shift -= 0.2;
+      reasons.push("article shift conflicts with linked-source neighborhood");
+    }
+  }
+
+  if (Math.abs(neighborhoodX) >= 1.0) {
+    shift += 0.1 * neighborhoodDir;
+    reasons.push(`strong neighborhood pull x=${neighborhoodX.toFixed(2)}`);
+  }
+
+  return {
+    shift: clamp(shift, -0.35, 0.35),
+    reasons,
+  };
+}
+
+function computePlacementConfidence(
+  sourceFound,
+  weightedNeighborhood,
+  articleShiftTotal,
+) {
+  let score = 0;
+
+  if (sourceFound) score += 0.35;
+  if (Number(weightedNeighborhood?.confidence || 0) >= 0.7) score += 0.35;
+  else if (Number(weightedNeighborhood?.confidence || 0) >= 0.45) score += 0.2;
+
+  if (Math.abs(Number(articleShiftTotal || 0)) >= 0.35) score += 0.3;
+
+  score = clamp(score, 0, 1);
+
+  let label = "low";
+  if (score >= 0.75) label = "high";
+  else if (score >= 0.5) label = "medium";
+
+  return { score, label };
+}
+
+function computeOutletPriorTieBreaker(
+  domain,
+  pageType,
+  currentArticleX,
+  articleShiftTotal,
+) {
+  const prior = OUTLET_PRIORS[domain];
+  if (!Number.isFinite(prior)) return 0;
+
+  // only break ties near center
+  if (Math.abs(currentArticleX) > 0.9) return 0;
+
+  // only apply if article evidence is not trivial
+  if (Math.abs(articleShiftTotal) < 0.35) return 0;
+
+  const shiftDir = sign(articleShiftTotal);
+  const priorDir = sign(prior);
+  if (!shiftDir || shiftDir !== priorDir) return 0;
+
+  const isOpinion = String(pageType || "")
+    .toLowerCase()
+    .includes("opinion");
+  return clamp(priorDir * (isOpinion ? 0.3 : 0.18), -0.3, 0.3);
+}
+
+function resolveSourcePriorX(domain, rating) {
+  const dbX = typeof rating?.x === "number" ? clamp(rating.x, -2, 2) : null;
+
+  const dbBucket = String(rating?.bucket || "").toLowerCase();
+  const outletPrior = OUTLET_PRIORS[domain];
+
+  // If DB gives a meaningful political value, use it.
+  if (
+    Number.isFinite(dbX) &&
+    !(dbX === 0 && (dbBucket === "unknown" || dbBucket === "center"))
+  ) {
+    return dbX;
+  }
+
+  // Otherwise fall back to outlet prior when known.
+  if (Number.isFinite(outletPrior)) {
+    return clamp(outletPrior, -2, 2);
+  }
+
+  return 0;
+}
+
+
 
 // fetchJson is a helper function to catch errors
 async function fetchJson(url, options) {
@@ -299,108 +782,543 @@ function sign(n) {
 
 // helps add information to the x axis
 // looks at cues so if x axis defaults to 0, this is called to more accurately place/ compare information 
+// newer version adds context to the cues to understand the tone of the article
 function computeSemanticCueScore(text = "") {
-  const t = (text || "").toLowerCase();
+  const t = String(text || "").toLowerCase();
 
-  // MVP cue lists (expand later using your Media Bias ratings doc)
-  const LEFT_CUES = [
-    "systemic",
-    "equity",
-    "racial justice",
-    "gender-affirming",
-    "reproductive rights",
-    "gun violence",
-    "climate crisis",
-    "wealth inequality",
-    "labor rights",
-    "union",
-    "social safety net",
-    "universal healthcare",
-    "marginalized",
-    "disinformation",
-  ];
-
-  const RIGHT_CUES = [
-    "border security",
-    "illegal immigration",
-    "woke",
-    "cancel culture",
-    "second amendment",
-    "parental rights",
-    "law and order",
-    "deep state",
-    "free speech",
-    "big government",
-    "tax relief",
-    "energy independence",
-    "national security",
-    "traditional values",
-  ];
-
-  const countHits = (phrases) => {
-    let c = 0;
-    for (const p of phrases) {
-      if (t.includes(p)) c++;
-    }
-    return c;
+  const ACTORS = {
+    right: [
+      "republican",
+      "republicans",
+      "gop",
+      "conservative",
+      "conservatives",
+      "trump",
+      "desantis",
+      "right-wing",
+      "right wing",
+    ],
+    left: [
+      "democrat",
+      "democrats",
+      "liberal",
+      "liberals",
+      "progressive",
+      "progressives",
+      "biden",
+      "harris",
+      "left-wing",
+      "left wing",
+    ],
   };
 
-  const left = countHits(LEFT_CUES);
-  const right = countHits(RIGHT_CUES);
+  const POSITIVE_WORDS = [
+    "support",
+    "supports",
+    "supported",
+    "back",
+    "backs",
+    "backed",
+    "defend",
+    "defends",
+    "defended",
+    "protect",
+    "protects",
+    "protected",
+    "benefit",
+    "benefits",
+    "beneficial",
+    "fair",
+    "commonsense",
+    "common-sense",
+    "needed",
+    "necessary",
+    "effective",
+    "reasonable",
+    "popular",
+    "improve",
+    "improves",
+    "improved",
+    "restore",
+    "restores",
+    "restored",
+    "expand",
+    "expands",
+    "expanded",
+    "strengthen",
+    "strengthens",
+    "strengthened",
+  ];
 
-  // positive => right-coded, negative => left-coded
+  const NEGATIVE_WORDS = [
+    "oppose",
+    "opposes",
+    "opposed",
+    "criticize",
+    "criticizes",
+    "criticized",
+    "attack",
+    "attacks",
+    "attacked",
+    "harmful",
+    "extreme",
+    "dangerous",
+    "controversial",
+    "radical",
+    "unfair",
+    "threat",
+    "threatens",
+    "threatened",
+    "restrict",
+    "restricts",
+    "restricted",
+    "ban",
+    "bans",
+    "banned",
+    "cut",
+    "cuts",
+    "gut",
+    "guts",
+    "gutted",
+    "undermine",
+    "undermines",
+    "undermined",
+    "false",
+    "baseless",
+    "debunked",
+    "misleading",
+    "rigged",
+  ];
+
+  const ISSUE_FRAMES = [
+    {
+      topic: "healthcare",
+      left: [
+        "universal healthcare",
+        "medicare for all",
+        "public option",
+        "expand medicaid",
+        "affordable healthcare",
+        "healthcare as a right",
+      ],
+      right: [
+        "government-run healthcare",
+        "socialized medicine",
+        "private healthcare choice",
+        "market-based healthcare",
+        "health savings accounts",
+      ],
+    },
+    {
+      topic: "abortion",
+      left: [
+        "reproductive rights",
+        "abortion rights",
+        "access to abortion",
+        "bodily autonomy",
+        "pro-choice",
+      ],
+      right: [
+        "pro-life",
+        "right to life",
+        "unborn child",
+        "late-term abortion",
+        "protect the unborn",
+      ],
+    },
+    {
+      topic: "lgbtq",
+      left: [
+        "lgbtq rights",
+        "trans rights",
+        "gender-affirming care",
+        "same-sex marriage",
+        "anti-discrimination protections",
+        "pride",
+      ],
+      right: [
+        "gender ideology",
+        "biological sex",
+        "protect women's sports",
+        "parental notification",
+        "anti-woke",
+        "woke ideology",
+      ],
+    },
+    {
+      topic: "speech_culture",
+      left: [
+        "hate speech",
+        "misinformation",
+        "disinformation",
+        "online harms",
+        "content moderation",
+      ],
+      right: [
+        "free speech",
+        "censorship",
+        "cancel culture",
+        "big tech censorship",
+        "speech suppression",
+      ],
+    },
+    {
+      topic: "elections",
+      left: [
+        "voting rights",
+        "voter suppression",
+        "election denial",
+        "certified results",
+        "protect democracy",
+      ],
+      right: [
+        "election integrity",
+        "voter fraud",
+        "rigged election",
+        "ballot harvesting",
+        "secure the vote",
+      ],
+    },
+    {
+      topic: "immigration",
+      left: [
+        "pathway to citizenship",
+        "immigrant rights",
+        "asylum seekers",
+        "family reunification",
+        "mass deportation",
+      ],
+      right: [
+        "border security",
+        "illegal immigration",
+        "border crisis",
+        "secure the border",
+        "deportation",
+        "sanctuary cities",
+      ],
+    },
+    {
+      topic: "taxes_economy",
+      left: [
+        "wealth tax",
+        "fair share",
+        "corporate loopholes",
+        "income inequality",
+        "raise taxes on the wealthy",
+        "worker protections",
+        "living wage",
+      ],
+      right: [
+        "tax relief",
+        "tax cuts",
+        "lower taxes",
+        "small government",
+        "job creators",
+        "deregulation",
+        "economic freedom",
+      ],
+    },
+    {
+      topic: "climate_energy",
+      left: [
+        "climate crisis",
+        "climate emergency",
+        "clean energy",
+        "environmental justice",
+        "green jobs",
+        "renewable energy",
+      ],
+      right: [
+        "energy independence",
+        "fossil fuels",
+        "drill more",
+        "anti-esg",
+        "climate alarmism",
+      ],
+    },
+    {
+      topic: "policing_crime",
+      left: [
+        "police reform",
+        "criminal justice reform",
+        "end qualified immunity",
+        "reduce police funding",
+        "community violence prevention",
+      ],
+      right: [
+        "law and order",
+        "back the blue",
+        "tough on crime",
+        "anti-police rhetoric",
+        "defund the police",
+      ],
+    },
+    {
+      topic: "guns",
+      left: [
+        "gun violence",
+        "gun safety",
+        "assault weapons ban",
+        "universal background checks",
+        "red flag laws",
+      ],
+      right: [
+        "second amendment",
+        "gun rights",
+        "constitutional carry",
+        "law-abiding gun owners",
+      ],
+    },
+    {
+      topic: "education_family",
+      left: [
+        "book bans",
+        "inclusive curriculum",
+        "student protections",
+        "public school funding",
+      ],
+      right: [
+        "parental rights",
+        "school choice",
+        "critical race theory",
+        "protect children from woke ideology",
+      ],
+    },
+    {
+      topic: "israel_palestine",
+      left: [
+        "free palestine",
+        "palestinian rights",
+        "ceasefire now",
+        "occupation",
+        "settler violence",
+        "humanitarian crisis in gaza",
+      ],
+      right: [
+        "stand with israel",
+        "support israel",
+        "israel has the right to defend itself",
+        "hamas terrorism",
+        "pro-israel",
+      ],
+    },
+    {
+      topic: "iran_war",
+      left: [
+        "avoid war with iran",
+        "diplomacy with iran",
+        "anti-war",
+        "ceasefire",
+        "prevent escalation",
+      ],
+      right: [
+        "strike iran",
+        "military deterrence",
+        "maximum pressure",
+        "national security threat",
+        "support military action",
+      ],
+    },
+  ];
+
+
+  const containsAny = (textChunk, phrases) => {
+    const hits = [];
+    for (const p of phrases) {
+      if (textChunk.includes(p)) hits.push(p);
+    }
+    return hits;
+  };
+
+  const windows = [];
+  const allPhrases = ISSUE_FRAMES.flatMap((frame) => [
+    ...frame.left.map((p) => ({ side: "left", topic: frame.topic, phrase: p })),
+    ...frame.right.map((p) => ({
+      side: "right",
+      topic: frame.topic,
+      phrase: p,
+    })),
+  ]);
+
+  for (const item of allPhrases) {
+    let idx = t.indexOf(item.phrase);
+    while (idx !== -1) {
+      const start = Math.max(0, idx - 120);
+      const end = Math.min(t.length, idx + item.phrase.length + 120);
+      windows.push({
+        ...item,
+        context: t.slice(start, end),
+      });
+      idx = t.indexOf(item.phrase, idx + item.phrase.length);
+    }
+  }
+
+  let score = 0;
+  let leftHits = 0;
+  let rightHits = 0;
+  let leftSupport = 0;
+  let leftCritique = 0;
+  let rightSupport = 0;
+  let rightCritique = 0;
+  const examples = [];
+
+  for (const hit of windows) {
+    const ctx = hit.context;
+
+    const posHits = containsAny(ctx, POSITIVE_WORDS);
+    const negHits = containsAny(ctx, NEGATIVE_WORDS);
+    const rightActorHits = containsAny(ctx, ACTORS.right);
+    const leftActorHits = containsAny(ctx, ACTORS.left);
+
+    const tone =
+      posHits.length > negHits.length
+        ? "positive"
+        : negHits.length > posHits.length
+          ? "negative"
+          : "neutral";
+
+    if (hit.side === "left") leftHits++;
+    if (hit.side === "right") rightHits++;
+
+    // support/critique logic
+    if (hit.side === "right" && tone === "positive") {
+      score += 1.0;
+      rightSupport++;
+    } else if (hit.side === "right" && tone === "negative") {
+      score -= 1.0;
+      rightCritique++;
+    } else if (hit.side === "left" && tone === "positive") {
+      score -= 1.0;
+      leftSupport++;
+    } else if (hit.side === "left" && tone === "negative") {
+      score += 1.0;
+      leftCritique++;
+    }
+
+    // actor reinforcement
+    if (hit.side === "right" && rightActorHits.length && tone === "positive")
+      score += 0.35;
+    if (hit.side === "right" && leftActorHits.length && tone === "negative")
+      score += 0.15;
+    if (hit.side === "left" && leftActorHits.length && tone === "positive")
+      score -= 0.35;
+    if (hit.side === "left" && rightActorHits.length && tone === "negative")
+      score -= 0.15;
+
+    if (examples.length < 8) {
+      examples.push(`${hit.topic}: "${hit.phrase}" (${hit.side}, ${tone})`);
+    }
+  }
+
+  score = clamp(score, -6, 6);
+
   return {
-    score: right - left,
-    leftHits: left,
-    rightHits: right,
+    score,
+    leftHits,
+    rightHits,
+    leftSupport,
+    leftCritique,
+    rightSupport,
+    rightCritique,
+    examples,
   };
 }
 
+function computeFramingSignals(title = "", textSample = "") {
+  const head = String(title || "").toLowerCase();
+  const body = String(textSample || "").toLowerCase();
+  const combined = `${head} ${body}`;
 
+  const preferredFrameWords = [
+    "endgame",
+    "showdown",
+    "victory",
+    "collapse",
+    "humiliation",
+    "crackdown",
+    "deadline",
+    "finally",
+    "must act",
+    "path forward",
+  ];
 
-function computeArticleAdjustmentX(
-  bucketX,
-  outboundAvgX,
-  techniques,
-  semantic
-) {
-  // Outbound skew moves within bucket
-  const outboundAdj = clamp((outboundAvgX / 2) * 0.6, -0.6, 0.6);
+  const hawkishWords = [
+    "strike",
+    "deterrence",
+    "military action",
+    "strength",
+    "retaliation",
+    "maximum pressure",
+    "show of force",
+  ];
 
-  // Wording intensity pushes away from center (magnitude)
-  const intensity = clamp(
-    techniques.spin.count * 0.08 +
-      techniques.sensationalism.count * 0.07 +
-      techniques.subjectiveCues.count * 0.05 +
-      techniques.attributionGaps.count * 0.08,
-    0,
-    0.5,
-  );
+  const skepticismWords = [
+    "critics say",
+    "without evidence",
+    "baseless",
+    "unverified",
+    "opponents argue",
+    "analysts warn",
+    "skeptics say",
+  ];
 
-  // adds extra Semantic cue (direction + extra magnitude)
-  const semanticScore = semantic?.score || 0;
-  const semanticDir = sign(semanticScore);
+  let score = 0;
+  const reasons = [];
 
-  // Normalize semantic magnitude so a few hits matter but don’t dominate
-  const semanticMag = clamp(Math.abs(semanticScore) * 0.12, 0, 0.6);
+  const frameHits = preferredFrameWords.filter((w) => combined.includes(w));
+  const hawkHits = hawkishWords.filter((w) => combined.includes(w));
+  const skepticHits = skepticismWords.filter((w) => combined.includes(w));
 
-  // Direction preference order:
-  // 1) outbound citations
-  // 2) semantic cues (topic/value language)
-  // 3) baseline domain bucket
-  const dir = sign(outboundAvgX) || semanticDir || sign(bucketX);
+  if (frameHits.length) {
+    score += Math.min(2, frameHits.length * 0.5);
+    reasons.push(`headline/narrative framing: ${frameHits.join(", ")}`);
+  }
 
-  // Language pushes away from center in chosen direction
-  const languageAdj = dir ? dir * intensity : 0;
+  if (hawkHits.length) {
+    score += Math.min(2, hawkHits.length * 0.5);
+    reasons.push(`hawkish/conflict framing: ${hawkHits.join(", ")}`);
+  }
 
-  // Semantic cues push in a direction even if outboundAvgX is 0
-  const semanticAdj = dir ? dir * semanticMag : 0;
+  if (skepticHits.length) {
+    score -= Math.min(1.5, skepticHits.length * 0.5);
+    reasons.push(`skepticism/context present: ${skepticHits.join(", ")}`);
+  }
 
   return {
-    outboundAdj,
-    languageAdj,
-    semanticAdj,
-    total: clamp(outboundAdj + languageAdj + semanticAdj, -0.9, 0.9),
+    score: clamp(score, -3, 3),
+    reasons,
+  };
+}
+
+function computeArticleShift(techniques, semantic, framing) {
+  const semanticScore = Number(semantic?.score || 0);
+  const framingScore = Number(framing?.score || 0);
+
+  // cue words stay in the system, but smaller
+  const semanticShift = clamp(semanticScore * 0.08, -0.3, 0.3);
+
+  // framing matters more than raw cue words
+  const framingShift = clamp(framingScore * 0.16, -0.55, 0.55);
+
+  // rhetoric is only a small reinforcement layer
+  const intensity = clamp(
+    (techniques?.spin?.count || 0) * 0.04 +
+      (techniques?.sensationalism?.count || 0) * 0.04 +
+      (techniques?.subjectiveCues?.count || 0) * 0.03 +
+      (techniques?.attributionGaps?.count || 0) * 0.05,
+    0,
+    0.22,
+  );
+
+  const dir = sign(framingScore) || sign(semanticScore);
+
+  const languageShift = dir ? dir * intensity : 0;
+
+  return {
+    semanticShift,
+    framingShift,
+    languageShift,
+    total: clamp(semanticShift + framingShift + languageShift, -1.0, 1.0),
   };
 }
 
@@ -632,9 +1550,12 @@ function computeReliabilityScore(data) {
   }
 
   // Reward citing known/rated sources (seeded domains)
-  if (extKnown >= 3) {
+  if (extKnown >= 5) {
+    y += 8;
+    why.push("+8 cites many known rated sources");
+  } else if (extKnown >= 3) {
     y += 6;
-    why.push("+6 cites known rated sources");
+    why.push("+6 cites several known rated sources");
   } else if (extKnown >= 1) {
     y += 3;
     why.push("+3 cites at least one known rated source");
@@ -656,33 +1577,74 @@ function computeReliabilityScore(data) {
     why.push("+3: some sourcing diversity (2 categories)");
   }
 
-  // Basic metadata (0–12)
-  if (data.author) {
-    y += 4;
-    why.push("+4: author listed");
-  }
-  if (data.date) {
-    y += 3;
-    why.push("+3: date listed");
-  }
-  if (data.publisher) {
-    y += 2;
-    why.push("+2: publisher listed");
-  }
-  if (data.https === true) {
-    y += 3;
-    why.push("+3: HTTPS");
+  // Penalize pages whose outbound profile is mostly unknown/unrated
+  if (extTotal >= 5) {
+    const unknownRatio = extUnknown / extTotal;
+    if (unknownRatio >= 0.7) {
+      y -= 6;
+      why.push("-6: most outbound sources are unknown/unrated");
+    } else if (unknownRatio >= 0.5) {
+      y -= 3;
+      why.push("-3: many outbound sources are unknown/unrated");
+    }
   }
 
-  // Reporting quality / penalties (0 to -26) 
+  // Scoring: Basic metadata matters, but does not dominate reliability
+  if (data.author) {
+    y += 2;
+    why.push("+2: author listed");
+  }
+  if (data.date) {
+    y += 2;
+    why.push("+2: date listed");
+  }
+  if (data.publisher) {
+    y += 1;
+    why.push("+1: publisher listed");
+  }
+  if (data.https === true) {
+    y += 1;
+    why.push("+1: HTTPS");
+  }
+  if (typeof data.sourceBaselineY === "number") {
+    y += 4;
+    why.push("+4: matched known rated source baseline");
+  }
+
+  //notes the lean of outbound sources
+  const sourceX = Number(data.x);
+  const outboundAvgX = Number(data.outboundSkew?.avgX);
+
+  if (Number.isFinite(sourceX) && Number.isFinite(outboundAvgX)) {
+    const drift = Math.abs(outboundAvgX - sourceX);
+    if (drift <= 0.5) {
+      y += 3;
+      why.push("+3: source baseline aligns with outbound profile");
+    } else if (drift >= 1.25) {
+      y -= 3;
+      why.push("-3: source baseline differs sharply from outbound profile");
+    }
+  }
+
+  const framingScore = Number(data.framingSignals?.score || 0);
+  if (framingScore >= 1.5) {
+    y -= 3;
+    why.push("-3: strong one-sided narrative framing");
+  } else if (framingScore <= -1.0) {
+    y += 1;
+    why.push("+1: skeptical/contextual framing present");
+  }
+
+  // Reporting quality / penalties (0 to -26)
+  // Places slighly less importance on language/ wording
   const bt = data.biasTechniques || {};
   const spin = bt.spin?.count || 0;
   const sens = bt.sensationalism?.count || 0;
   const subj = bt.subjectiveCues?.count || 0;
   const gaps = bt.attributionGaps?.count || 0;
 
-  const penalty = spin * 2.0 + sens * 2.0 + subj * 1.0 + gaps * 3.0;
-  const cappedPenalty = clamp(penalty, 0, 18);
+  const penalty = spin * 1.5 + sens * 1.5 + subj * 1.0 + gaps * 2.0;
+  const cappedPenalty = clamp(penalty, 0, 14);
   if (cappedPenalty > 0) {
     y -= cappedPenalty;
     why.push(
@@ -728,7 +1690,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     clean.hash = "";
     const pageUrl = clean.toString();
 
-    //testing
     let local;
     try {
       local = await chrome.tabs.sendMessage(tab.id, {
@@ -739,12 +1700,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         "Content script not reachable. Refresh the page and try again.",
       );
     }
-    //testing
-
-    // 1) Ask content script for local signals
-    // const local = await chrome.tabs.sendMessage(tab.id, {
-    //   type: "EXTRACT_PAGE_SIGNALS",
-    // });
 
     // 2) Decide what’s missing
     const need = missingFields(local);
@@ -787,32 +1742,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             : 0,
     };
 
-    // --- X axis (bias) from DB ---
-    // const rawDomain = getDomain(pageUrl);
-    // const domain = normalizeDomain(rawDomain);
-    // merged.url = merged.url || pageUrl; // ensure url exists
-    // merged.domain = domain;
-    // const rating = domain ? await getRating(domain) : null;
-
-    // merged.bucket = rating?.bucket || "unknown";
-    // merged.x = typeof rating?.x === "number" ? rating.x : 0; // default center if unknown
-
-    //temporary db lookup
+    //baseline lookup from local db
     const { domain, rating } = await getRatingSmart(pageUrl);
 
     merged.url = merged.url || pageUrl;
     merged.domain = domain;
     merged.bucket = rating?.bucket || "unknown";
     merged.x = typeof rating?.x === "number" ? rating.x : 0;
-
-    // is storage updating??
-    // console.log("[SusAbility] saving lastAnalysis:", {
-    //   url: merged.url,
-    //   domain: merged.domain,
-    //   bucket: merged.bucket,
-    //   x: merged.x,
-    //   y: merged.y,
-    // });
+    merged.sourceBaselineY =
+      typeof rating?.baselineY === "number" ? rating.baselineY : 32;
 
     // Y axis (reliability) from scoring
     // 1) outbound skew (external sources only)
@@ -822,29 +1760,177 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     );
     merged.outboundSkew = outbound;
 
+    const weightedNeighborhood = await computeWeightedOutboundNeighborhood(
+      merged.outboundLinks || merged.refs || [],
+      merged.domain,
+      merged.textSample || "",
+    );
+    merged.weightedNeighborhood = weightedNeighborhood;
+
+    // Build a political baseline from source matching with db, then look at outbound rated links if needed
+
+    const knownCount =
+      (outbound.counts.left || 0) +
+      (outbound.counts.lean_left || 0) +
+      (outbound.counts.center || 0) +
+      (outbound.counts.lean_right || 0) +
+      (outbound.counts.right || 0);
+
+    const sourceFound = !!rating;
+    const sourcePriorX = resolveSourcePriorX(merged.domain, rating);
+
+    const neighborhoodX =
+      Number(weightedNeighborhood.totalWeight || 0) > 0
+        ? weightedNeighborhood.avgX
+        : Number.isFinite(outbound.avgX) && knownCount > 0
+          ? outbound.avgX
+          : 0;
+
+    // Display baseline in the dashboard:
+    // known source -> source prior
+    // unknown source -> neighborhood estimate
+    merged.x = sourceFound ? sourcePriorX : clamp(neighborhoodX, -2, 2);
+
+    merged.bucket =
+      merged.x <= -1.5
+        ? "left"
+        : merged.x <= -0.5
+          ? "lean_left"
+          : merged.x < 0.5
+            ? "center"
+            : merged.x < 1.5
+              ? "lean_right"
+              : "right";
+
+    merged.why = merged.why || [];
+    if (sourceFound) {
+      const rawDbX =
+        typeof rating?.x === "number" ? clamp(rating.x, -2, 2) : null;
+      const outletPrior = OUTLET_PRIORS[merged.domain];
+
+      if (
+        Number.isFinite(outletPrior) &&
+        Number.isFinite(rawDbX) &&
+        rawDbX === 0 &&
+        ["unknown", "center"].includes(
+          String(rating?.bucket || "").toLowerCase(),
+        )
+      ) {
+        merged.why.push(
+          `Source prior fallback used outlet prior for ${merged.domain}: x=${sourcePriorX.toFixed(2)}`,
+        );
+      } else {
+        merged.why.push(`Source prior: x=${sourcePriorX.toFixed(2)}`);
+      }
+    } else if (Number(weightedNeighborhood.totalWeight || 0) > 0) {
+      merged.why.push(
+        `Unknown source; baseline inferred from weighted linked neighborhood x=${neighborhoodX.toFixed(2)}`,
+      );
+    } else if (Number.isFinite(outbound.avgX) && knownCount > 0) {
+      merged.why.push(
+        `Unknown source; baseline inferred from linked-source pattern x=${outbound.avgX.toFixed(2)}`,
+      );
+    } else {
+      merged.why.push(
+        "No direct source match and no rated linked neighborhood; baseline defaults to center",
+      );
+    }
+
     // 2) bias techniques from text sample
     const textForBias = `${merged.title || ""} ${merged.textSample || ""}`;
     const techniques = detectBiasTechniques(textForBias);
     merged.biasTechniques = techniques;
 
-    // 2b) semantic cues for X direction (pattern-based)
     const semantic = computeSemanticCueScore(textForBias);
     merged.semanticCue = semantic;
 
-    // 3) compute article-level X adjustment (within bucket)
-    const adj = computeArticleAdjustmentX(
-      merged.x,
-      outbound.avgX,
-      techniques,
-      semantic
+    const framing = computeFramingSignals(
+      merged.title || "",
+      merged.textSample || "",
     );
-    merged.articleAdjustmentX = adj;
-    merged.articleX = clamp(merged.x + adj.total, -2, 2);
+    merged.framingSignals = framing;
+
+    // Article-specific shift
+    const articleShift = computeArticleShift(techniques, semantic, framing);
+    merged.articleShift = articleShift;
+
+    // Neighborhood shift:
+    // known source -> move relative to source prior
+    // unknown source -> neighborhood itself is the main directional block
+    const neighborhoodConfidence = Number(weightedNeighborhood.confidence || 0);
+
+    const rawNeighborhoodShift = sourceFound
+      ? neighborhoodX - sourcePriorX
+      : neighborhoodX;
+
+    const neighborhoodShift = clamp(
+      rawNeighborhoodShift * 0.45 * neighborhoodConfidence,
+      -0.85,
+      0.85,
+    );
+
+    merged.why.push(
+      `Neighborhood confidence=${neighborhoodConfidence.toFixed(2)}, rawNeighborhoodShift=${rawNeighborhoodShift.toFixed(2)}`,
+    );
+
+    const neighborhoodAgreement = computeNeighborhoodAgreementSignals(
+      articleShift.total,
+      weightedNeighborhood,
+    );
+    merged.neighborhoodAgreementSignals = neighborhoodAgreement;
+
+    merged.articleX = clamp(
+      sourcePriorX +
+        neighborhoodShift +
+        articleShift.total +
+        neighborhoodAgreement.shift,
+      -2,
+      2,
+    );
+
+    const outletPriorAdj = computeOutletPriorTieBreaker(
+      merged.domain,
+      merged.pageType,
+      merged.articleX,
+      articleShift.total,
+    );
+
+    merged.articleX = clamp(merged.articleX + outletPriorAdj, -2, 2);
+    merged.bucket = getPoliticalBucketFromX(merged.articleX);
+
+    const placementConfidence = computePlacementConfidence(
+      sourceFound,
+      weightedNeighborhood,
+      articleShift.total,
+    );
+    merged.placementConfidence = placementConfidence;
+
+    // low-confidence center zone
+    if (placementConfidence.score < 0.45 && Math.abs(merged.articleX) < 0.85) {
+      merged.articleX = clamp(merged.articleX * 0.5, -2, 2);
+      merged.why.push("Low-confidence center zone applied");
+    }
+
+    merged.why.push(
+      `X model: sourcePrior=${sourcePriorX.toFixed(2)}, neighborhoodShift=${neighborhoodShift.toFixed(2)}, articleShift=${articleShift.total.toFixed(2)}, neighborhoodAgreement=${neighborhoodAgreement.shift.toFixed(2)}, outletPriorAdj=${outletPriorAdj.toFixed(2)}, final articleX=${merged.articleX.toFixed(2)}, confidence=${placementConfidence.label}`,
+    );
+
+    merged.why.push(
+      `Article shift: semantic=${articleShift.semanticShift.toFixed(2)}, framing=${articleShift.framingShift.toFixed(2)}, language=${articleShift.languageShift.toFixed(2)}`,
+    );
 
     // 4) NOW compute Y using Ad Fontes-ish reliability scoring
     const scored = computeReliabilityScore(merged);
-    merged.y = scored.y;
+    const baseY = Number.isFinite(merged.sourceBaselineY)
+      ? merged.sourceBaselineY
+      : 32;
+
+    // Blend source reliability baseline with article-level evidence
+    merged.y = clamp(baseY * 0.6 + scored.y * 0.4, 0, 64);
     merged.why = (merged.why || []).concat(scored.why);
+    merged.why.push(
+      `Y baseline=${baseY.toFixed(2)}, articleScore=${scored.y.toFixed(2)}, final y=${merged.y.toFixed(2)}`,
+    );
 
     // Add explainable bullets
     merged.why.push(
@@ -861,9 +1947,55 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         `Attribution gaps: ${techniques.attributionGaps.examples.join(", ")}`,
       );
     merged.why.push(
-      `Semantic cues: L=${semantic.leftHits}, R=${semantic.rightHits}, score=${semantic.score}`,
+      `Semantic cues: leftHits=${semantic.leftHits}, rightHits=${semantic.rightHits}, leftSupport=${semantic.leftSupport}, leftCritique=${semantic.leftCritique}, rightSupport=${semantic.rightSupport}, rightCritique=${semantic.rightCritique}, score=${semantic.score}`,
     );
+
+    if (Array.isArray(semantic.examples) && semantic.examples.length) {
+      merged.why.push(`Semantic examples: ${semantic.examples.join(" | ")}`);
+    }
+    if (Array.isArray(framing.reasons) && framing.reasons.length) {
+      merged.why.push(`Framing signals: ${framing.reasons.join(" | ")}`);
+    }
+    if (
+      Array.isArray(weightedNeighborhood.reasons) &&
+      weightedNeighborhood.reasons.length
+    ) {
+      merged.why.push(
+        `Weighted neighborhood: ${weightedNeighborhood.reasons.join(" | ")}`,
+      );
+    }
+    if (
+      Array.isArray(weightedNeighborhood.filteredReasons) &&
+      weightedNeighborhood.filteredReasons.length
+    ) {
+      merged.why.push(
+        `Filtered neighborhood links: ${weightedNeighborhood.filteredReasons.join(" | ")}`,
+      );
+    }
+
+    if (
+      Array.isArray(neighborhoodAgreement.reasons) &&
+      neighborhoodAgreement.reasons.length
+    ) {
+      merged.why.push(
+        `Neighborhood agreement: ${neighborhoodAgreement.reasons.join(" | ")}`,
+      );
+    }
     await chrome.storage.local.set({ lastAnalysis: merged });
+    // Log analyses for clustering / trend analysis
+    const record = {
+      ts: Date.now(),
+      url: merged.url,
+      domain: merged.domain,
+      title: merged.title || "",
+      outboundLinks: merged.outboundLinks || merged.refs || [],
+    };
+
+    const prev = await chrome.storage.local.get({ analysisLog: [] });
+    const analysisLog = Array.isArray(prev.analysisLog) ? prev.analysisLog : [];
+    analysisLog.push(record);
+    while (analysisLog.length > 500) analysisLog.shift();
+    await chrome.storage.local.set({ analysisLog });
 
     return merged;
   })()

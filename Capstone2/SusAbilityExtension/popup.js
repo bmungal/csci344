@@ -12,16 +12,12 @@ const statusEl = $("status");
 // --- navigation ---
 const navDashboard = $("navDashboard");
 const navSettings = $("navSettings");
-const viewDashboard = $("viewDashboard");
-const viewSettings = $("viewSettings");
 
 // --- settings controls ---
 const toggleUseApis = $("toggleUseApis");
 const toggleShowRefs = $("toggleShowRefs");
 const maxRefsEl = $("maxRefs");
 
-navDashboard.addEventListener("click", () => showView("dashboard"));
-navSettings.addEventListener("click", () => showView("settings"));
 
 async function loadSettings() {
   const defaults = { useApis: true, showRefs: true, maxRefs: 10 };
@@ -30,6 +26,20 @@ async function loadSettings() {
   if (toggleUseApis) toggleUseApis.checked = !!saved.useApis;
   if (toggleShowRefs) toggleShowRefs.checked = !!saved.showRefs;
   if (maxRefsEl) maxRefsEl.value = String(saved.maxRefs ?? 10);
+}
+
+// Load initial "how to" prompt on the first open of the extension
+async function maybeShowOnboarding() {
+  const modal = document.getElementById("onboardingModal");
+  const ok = document.getElementById("onboardingOk");
+  if (!modal || !ok) return;
+
+  // show once per popup open
+  modal.classList.remove("hidden");
+
+  ok.addEventListener("click", () => {
+    modal.classList.add("hidden");
+  }, { once: true });
 }
 
 function saveSettings() {
@@ -57,71 +67,80 @@ function setStatus(message) {
   statusEl.textContent = message;
 }
 
-function scoreSignals(data) {
-  let score = 50;
+function summarizeAnalysisForUser(data) {
   const breakdown = [];
 
-  // Score Metadata
-  // Maybe removed?
-  // Definitely redone
-  if (data.author) {
+  const reliability = Number(data.y);
+  const politicalX = Number.isFinite(Number(data.articleX))
+    ? Number(data.articleX)
+    : Number(data.x);
+
+  const outboundCounts = data.outboundSkew?.counts || {};
+  const ratedOutbound =
+    (outboundCounts.left || 0) +
+    (outboundCounts.lean_left || 0) +
+    (outboundCounts.center || 0) +
+    (outboundCounts.lean_right || 0) +
+    (outboundCounts.right || 0);
+
+  const unknownOutbound = outboundCounts.unknown || 0;
+  const totalOutbound = ratedOutbound + unknownOutbound;
+
+  let score = 50;
+
+  if (Number.isFinite(reliability)) {
+    score += (reliability - 32) * 0.8;
+    breakdown.push(
+      `Reliability contributed ${Math.round((reliability - 32) * 0.8)} points`,
+    );
+  }
+
+  if (ratedOutbound >= 5) {
     score += 10;
-    breakdown.push("+10 Author present");
-  } else {
-    breakdown.push("0 Author not detected");
-  }
-
-  if (data.date) {
-    score += 10;
-    breakdown.push("+10 Publish date present");
-  } else {
-    breakdown.push("0 Publish date not detected");
-  }
-
-  if (data.title) {
+    breakdown.push("+10 strong linked-source evidence");
+  } else if (ratedOutbound >= 2) {
     score += 5;
-    breakdown.push("+5 Title present");
+    breakdown.push("+5 some linked-source evidence");
   } else {
-    breakdown.push("0 Title not detected");
+    breakdown.push("+0 limited linked-source evidence");
   }
 
-  // Score Citations
-  const c = Array.isArray(data.outboundLinks) ? data.outboundLinks.length : 0;
-  if (c >= 3) {
-    score += 15;
-    breakdown.push(`+15 ${c} outbound citations found`);
-  } else if (c >= 1) {
-    score += 8;
-    breakdown.push(`+8 ${c} outbound citation (s) found`);
-  } else {
-    score -= 15;
-    breakdown.push("-15 No outbound citations found");
+  if (totalOutbound >= 5 && unknownOutbound / totalOutbound >= 0.7) {
+    score -= 8;
+    breakdown.push("-8 most linked sources are unknown/unrated");
+  } else if (totalOutbound >= 5 && unknownOutbound / totalOutbound >= 0.5) {
+    score -= 4;
+    breakdown.push("-4 many linked sources are unknown/unrated");
   }
 
-  // Score HTTPS
-  if (data.https) {
-    score += 5;
-    breakdown.push("+5 HTTPS enabled");
-  } else {
-    score += 0;
-    breakdown.push("+0 HTTP NOT HTTPS");
+  if (typeof data.sourceBaselineY === "number") {
+    score += 6;
+    breakdown.push("+6 matched a known source baseline");
   }
 
-  // Score Domain
-  try {
-    const host = new URL(data.url).hostname.toLowerCase();
-    if (host.endsWith(".gov") || host.endsWith(".edu")) {
-      score += 5;
-      breakdown.push("+5 .gov/ .edu domain (Positive Advisory)");
-    } else {
-      breakdown.push("0 Domain type neutral: Neutral Advisory ");
-    }
-  } catch {
-    breakdown.push("No Domain found");
+  if (
+    data.pageType &&
+    String(data.pageType).toLowerCase().includes("opinion")
+  ) {
+    score -= 6;
+    breakdown.push("-6 opinion-style content");
   }
 
-  score = Math.max(0, Math.min(100, score));
-  return { score, breakdown };
+  score = Math.max(0, Math.min(100, Math.round(score)));
+
+  let advisory = "Mixed signals";
+  if (score >= 75) advisory = "Higher confidence";
+  else if (score >= 60) advisory = "Moderate confidence";
+  else if (score >= 40) advisory = "Use caution";
+  else advisory = "Low confidence";
+
+  return {
+    score,
+    advisory,
+    breakdown,
+    politicalX,
+    reliability,
+  };
 }
 
 // renderResults
@@ -152,7 +171,15 @@ function renderResults(scoreObj, links) {
     const li = document.createElement("li");
     const a = document.createElement("a");
     a.href = href;
-    a.textContent = href;
+    //a.textContent = href;
+    //vertical scroll for popup
+    let label = href;
+    try {
+      const u = new URL(href);
+      label = u.hostname.replace(/^www\./, "");
+    } catch {}
+    a.textContent = label;
+    a.title = href; // full URL on hover
     a.target = "_blank";
     a.rel = "noreferrer";
     li.appendChild(a);
@@ -166,41 +193,65 @@ function renderSignals(data) {
   if (!signalsList) return;
 
   const rows = [
-    ["Title", data.title || "Cannot find title."],
-    ["Author", data.author || "Cannot find author."],
-    ["Publisher", data.publisher || "Cannot find publisher."],
-    ["Date", data.date || "Cannot find date."],
-    ["URL", data.url || "Cannot find URL."],
-    ["Page Type", data.pageType || "Unknown"],
+    ["Title", data.title || "Not found"],
+    ["Author", data.author || "Not found"],
+    ["Publisher", data.publisher || "Not found"],
+    ["Date", data.date || "Not found"],
+    ["Page type", data.pageType || "Unknown"],
     [
-      "Fields of Study",
-      Array.isArray(data.fieldsOfStudy) && data.fieldsOfStudy.length
-        ? data.fieldsOfStudy.join(", ")
-        : "Not available.",
+      "Political starting point",
+      data.bucket ? String(data.bucket).replace("_", " ") : "Unknown",
     ],
-    ["DOI", data.doi || "No DOI found."],
+    [
+      "Final political placement",
+      Number.isFinite(Number(data.articleX))
+        ? String(data.articleX)
+        : "Not available",
+    ],
+    [
+      "Reliability score",
+      Number.isFinite(Number(data.y))
+        ? String(Math.round(Number(data.y)))
+        : "Not available",
+    ],
+    [
+      "Known linked sources",
+      data.outboundSkew
+        ? String(
+            (data.outboundSkew.counts.left || 0) +
+              (data.outboundSkew.counts.lean_left || 0) +
+              (data.outboundSkew.counts.center || 0) +
+              (data.outboundSkew.counts.lean_right || 0) +
+              (data.outboundSkew.counts.right || 0),
+          )
+        : "Not available",
+    ],
+    [
+      "Unknown linked sources",
+      data.outboundSkew
+        ? String(data.outboundSkew.counts.unknown || 0)
+        : "Not available",
+    ],
+    [
+      "Linked source pattern",
+      data.outboundSkew && Number.isFinite(Number(data.outboundSkew.avgX))
+        ? Number(data.outboundSkew.avgX).toFixed(2)
+        : "Not available",
+    ],
+    ["DOI", data.doi || "None"],
     [
       "References detected",
       typeof data.referenceCount === "number"
         ? String(data.referenceCount)
-        : "Not available.",
+        : "Not available",
     ],
     [
-      "Cited by (Semantic Scholar)",
+      "Cited by",
       typeof data.citedByCount === "number"
         ? String(data.citedByCount)
-        : "Not available.",
+        : "Not available",
     ],
-    ["API Used", data.apiUsed ? "Yes" : "No"],
-    [
-      "Sources",
-      data.apiSources
-        ? Object.entries(data.apiSources)
-            .map(([k, v]) => `${k}=${v}`)
-            .join(", ")
-        : "None",
-    ],
-    ["HTTPS", data.https ? "Yes" : "No"],
+    ["Secure connection", data.https ? "Yes" : "No"],
   ];
 
   signalsList.innerHTML = "";
@@ -253,7 +304,7 @@ if (analyzeBtn) {
       const outbound = Array.isArray(data.outboundLinks)
         ? data.outboundLinks
         : [];
-      const scoreObj = scoreSignals({ ...data, outboundLinks: outbound });
+      const scoreObj = summarizeAnalysisForUser(data);
 
       const finalRefs = settings.showRefs
         ? outbound.slice(0, settings.maxRefs)
@@ -271,38 +322,104 @@ if (analyzeBtn) {
         document.querySelectorAll("#signalsList li"),
       ).map((li) => li.textContent);
 
-      chrome.storage.local.set({
-        lastPopupAnalysis: {
-          url: data.url || "",
-          score: scoreObj.score,
-          advisory: "Neutral",
-          signals: signalLines,
-          breakdown: scoreObj.breakdown,
-          refs: finalRefs,
-        },
-      });
+     chrome.storage.local.set({
+       lastPopupAnalysis: {
+         url: data.url || "",
+         domain: data.domain || "",
+         bucket: data.bucket || "unknown",
+         x: data.x,
+         articleX: data.articleX,
+         y: data.y,
+         outboundLinks: outbound,
+         score: scoreObj.score,
+         advisory: scoreObj.advisory,
+         signals: signalLines,
+         breakdown: scoreObj.breakdown,
+         refs: finalRefs,
+       },
+     });
     });
   });
 }
+
 // Action when btn Generate citation is clicked
+// uses stored signals to create an apa/ mla citation, copies to clipboard
+function formatCitationAPA(data) {
+  const author = data.author || "Unknown author";
+  const date = data.date ? `(${data.date}).` : "(n.d.).";
+  const title = data.title || "Untitled page";
+  const publisher = data.publisher || "Unknown publisher";
+  const url = data.url || "";
+
+  return `${author} ${date} ${title}. ${publisher}. ${url}`
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function formatCitationMLA(data) {
+  const author = data.author || "Unknown author";
+  const title = data.title || "Untitled page";
+  const publisher = data.publisher || "Unknown publisher";
+  const date = data.date || "n.d.";
+  const url = data.url || "";
+
+  return `${author}. "${title}." ${publisher}, ${date}, ${url}`
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 if (citeBtn) {
   citeBtn.addEventListener("click", async () => {
-    const [tab] = await chrome.tabs.query({
-      active: true,
-      currentWindow: true,
+    const saved = await chrome.storage.local.get({
+      lastAnalysis: null,
+      lastPopupAnalysis: null,
     });
-    const url = tab?.url || "(unknown url)";
 
-    setStatus(`Citation clicked. This will show citations: ${url}`);
+    const data = {
+      ...(saved.lastPopupAnalysis || {}),
+      ...(saved.lastAnalysis || {}),
+    };
+
+    if (!data.url && !data.title) {
+      setStatus("Run Analyze Page before generating a citation.");
+      return;
+    }
+
+    const apa = formatCitationAPA(data);
+    const mla = formatCitationMLA(data);
+
+    const citationText = `APA:\n${apa}\n\nMLA:\n${mla}`;
+
+    try {
+      await navigator.clipboard.writeText(citationText);
+      setStatus("Citation copied to clipboard.");
+    } catch {
+      setStatus("Could not copy citation automatically.");
+    }
+
+    const resultsEl = document.getElementById("results");
+    if (resultsEl) resultsEl.classList.remove("hidden");
+
+    const breakdownEl = document.getElementById("breakdownList");
+    if (breakdownEl) {
+      breakdownEl.innerHTML = "";
+      ["Citation formats generated:", `APA: ${apa}`, `MLA: ${mla}`].forEach(
+        (line) => {
+          const li = document.createElement("li");
+          li.textContent = line;
+          breakdownEl.appendChild(li);
+        },
+      );
+    }
   });
 }
 
 // Action when help link is clicked
 if (helpLink) {
   helpLink.addEventListener("click", () => {
-    // Show a message for now
-    // Come back and write docs page or extension help page
-    setStatus("Help: This will show a help page");
+    chrome.tabs.create({
+      url: chrome.runtime.getURL("help.html"),
+    });
   });
 }
 
@@ -325,3 +442,9 @@ if (navSettings) {
 }
 
 // //
+
+// start up prompt on launch 
+document.addEventListener("DOMContentLoaded", () => {
+  maybeShowOnboarding(); // show immediately on open
+});
+

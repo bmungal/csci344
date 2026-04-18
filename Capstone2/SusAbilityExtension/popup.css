@@ -2,7 +2,8 @@
 *{box-sizing: border-box;}
 
 body {
-  padding: 12px;
+  margin: 0;
+  padding: 12px 12px 60px;
 }
 
 html,body {
@@ -34,6 +35,12 @@ html,body {
     margin: 4px 0 12px;
     font-size: 12px;
     opacity: 0.75;
+}
+
+.mutedSmall {
+  font-size: 12px;
+  opacity: 0.8;
+  line-height: 1.45;
 }
 
 .main {
@@ -84,10 +91,6 @@ html,body {
   display: none;
 }
 
-/* Make room so fixed bottom nav doesn't cover content */
-body {
-  padding-bottom: 56px;
-}
 
 /* --- bottom nav (Dashboard/Settings) --- */
 .bottomNav {
@@ -158,4 +161,72 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* pop up horizontal scroll */
+.chipScroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  padding-bottom: 6px; /* prevents scrollbar overlap */
+}
+
+.chipList {
+  display: flex;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.chipList li {
+  flex: 0 0 auto;
+}
+
+.chipList a {
+  display: inline-block;
+  padding: 6px 10px;
+  border: 1px solid rgba(0,0,0,0.15);
+  border-radius: 999px;
+  text-decoration: none;
+  white-space: nowrap;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+/* popup onboarding modal */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modalCard {
+  width: 100%;
+  max-width: 320px;
+  max-height: 82vh;
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 14px;
+  padding: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.24);
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
 }

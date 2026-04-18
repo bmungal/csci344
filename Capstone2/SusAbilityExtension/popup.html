@@ -41,13 +41,33 @@
         <h3>Breakdown</h3>
         <ul id="breakdownList"></ul>
 
+        <!-- add horizontal scrolling for outbound references -->
         <h3>Outbound references</h3>
-        <ul id="refsList"></ul>
+        <div class="chipScroll">
+          <ul id="refsList" class="chipList"></ul>
+        </div>
       </section>
     </main>
     <div class="bottomNav">
       <button id="navDashboard" class="btn">Dashboard</button>
       <button id="navSettings" class="btn">Settings</button>
     </div>
+    <div id="onboardingModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
+  <div class="modalCard">
+    <h2 id="onboardingTitle">Welcome to SusAbility</h2>
+    <p class="mutedSmall">
+      1) First Click <b>Analyze page</b> to extract signals and compute placement.<br />
+      2) Use <b>Dashboard</b> to view the chart and explanation.<br />
+      3) Use <b>Generate Citation</b> to create APA/MLA citations for the current page.<br />
+      4) Use <b>Help</b> for further questions or in-depth detail.<br /
+    </p>
+    <p class="mutedSmall">
+      This project is academically informed by PennMAP and the Media Bias Detector research from the University of Pennsylvania.
+    </p>
+    <div class="modalActions">
+      <button id="onboardingOk" class="btn primary" type="button">Got it</button>
+    </div>
+  </div>
+</div>
   </body>
 </html>

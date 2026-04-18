@@ -14,7 +14,8 @@
     "https://api.crossref.org/*",
     "https://api.semanticscholar.org/*",
     "https://*.rapidapi.com/*",
-    "https://*.p.rapidapi.com/*"
+    "https://*.p.rapidapi.com/*",
+    "https://media-bias-fact-check-ratings-api2.p.rapidapi.com/*"
   ],
   "background": {
   "service_worker": "service_worker.js",

@@ -156,6 +156,383 @@ async function updateDbStatus(message = "") {
     el.textContent = `DB status error: ${String(e)}`;
   }
 }
+
+// helps MBFC labels match more reliably
+function mbfcBiasToBucketX(biasLabel = "") {
+  const s = String(biasLabel).toLowerCase().trim();
+
+  if (!s) return { bucket: "unknown", x: 0 };
+
+  if (s.includes("extreme left") || s === "left" || s.includes("left bias"))
+    return { bucket: "left", x: -2 };
+  if (
+    s.includes("left-center") ||
+    s.includes("left center") ||
+    s.includes("left-center bias")
+  )
+    return { bucket: "lean_left", x: -1 };
+  if (
+    s.includes("right-center") ||
+    s.includes("right center") ||
+    s.includes("right-center bias")
+  )
+    return { bucket: "lean_right", x: 1 };
+  if (
+    s.includes("least biased") ||
+    s === "center" ||
+    s === "centrist" ||
+    s.includes("center bias")
+  )
+    return { bucket: "center", x: 0 };
+  if (s.includes("extreme right") || s === "right" || s.includes("right bias"))
+    return { bucket: "right", x: 2 };
+
+  return { bucket: "unknown", x: 0 };
+}
+
+function mbfcFactualToBaselineY(factualLabel = "", credibilityLabel = "") {
+  // Map MBFC factual reporting category -> 0..64 baseline
+  const f = String(factualLabel).toLowerCase();
+  let y;
+
+  if (f.includes("very high")) y = 56;
+  else if (f.includes("high")) y = 48;
+  else if (f.includes("mostly factual")) y = 40;
+  else if (f.includes("mixed")) y = 32;
+  else if (f.includes("low")) y = 20;
+  else if (f.includes("very low")) y = 12;
+  else y = 32; // unknown -> mid
+
+  // small adjustment using credibility
+  const c = String(credibilityLabel).toLowerCase();
+  if (c.includes("high")) y += 4;
+  else if (c.includes("low")) y -= 4;
+
+  return clamp(y, 0, 64);
+}
+
+function makeUnionFind(items) {
+  const parent = new Map();
+  const rank = new Map();
+  for (const it of items) {
+    parent.set(it, it);
+    rank.set(it, 0);
+  }
+
+  const find = (x) => {
+    let p = parent.get(x);
+    if (p === x) return x;
+    p = find(p);
+    parent.set(x, p);
+    return p;
+  };
+
+  const union = (a, b) => {
+    const ra = find(a),
+      rb = find(b);
+    if (ra === rb) return;
+    const rka = rank.get(ra) || 0;
+    const rkb = rank.get(rb) || 0;
+    if (rka < rkb) parent.set(ra, rb);
+    else if (rkb < rka) parent.set(rb, ra);
+    else {
+      parent.set(rb, ra);
+      rank.set(ra, rka + 1);
+    }
+  };
+
+  return { find, union, parent };
+}
+
+async function computeClustersFromLog(seedsByDomain) {
+  const saved = await chrome.storage.local.get({ analysisLog: [] });
+  const log = Array.isArray(saved.analysisLog) ? saved.analysisLog : [];
+
+  const domFromLink = (href) => {
+    try {
+      return resolveSeedDomain(new URL(href).hostname, seedsByDomain);
+    } catch {
+      return "";
+    }
+  };
+
+  // Only include domains that actually appear in the log graph
+  const active = new Set();
+  const edges = [];
+
+  for (const rec of log) {
+    const a =
+      resolveSeedDomain(rec.domain || "", seedsByDomain) ||
+      collapseDomain(rec.domain || "");
+    if (!a) continue;
+    active.add(a);
+
+    const links = rec.outboundLinks || rec.refs || [];
+    for (const href of links) {
+      const b = domFromLink(href);
+      if (!b || !seedsByDomain[b]) continue;
+      if (a === b) continue;
+
+      active.add(b);
+      edges.push([a, b]);
+    }
+  }
+
+  // If we don't have enough activity, return "no clusters"
+  if (active.size === 0) {
+    return { clusterCount: 0, clusterIds: new Map() };
+  }
+
+  const uf = makeUnionFind(active);
+  for (const [a, b] of edges) uf.union(a, b);
+
+  const clusterIds = new Map();
+  const idByRoot = new Map();
+  let nextId = 1;
+
+  for (const d of active) {
+    const root = uf.find(d);
+    if (!idByRoot.has(root)) idByRoot.set(root, nextId++);
+    clusterIds.set(d, idByRoot.get(root));
+  }
+
+  return {
+    clusterCount: idByRoot.size,
+    clusterIds,
+  };
+}
+
+
+async function mbfcFetchDump(apiKey) {
+  const url =
+    "https://media-bias-fact-check-ratings-api2.p.rapidapi.com/fetch-data";
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      "x-rapidapi-key": apiKey,
+      "x-rapidapi-host": "media-bias-fact-check-ratings-api2.p.rapidapi.com",
+    },
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`MBFC fetch failed (${res.status}): ${txt.slice(0, 300)}`);
+  }
+  return await res.json();
+}
+
+function normalizeHost(host) {
+  return (host || "").replace(/^www\./, "").toLowerCase();
+}
+
+function collapseDomain(host) {
+  host = normalizeHost(host);
+  const ALIASES = {
+    "ms.now": "msnbc.com",
+    "fxn.ws": "foxnews.com",
+    "nyti.ms": "nytimes.com",
+    "wapo.st": "washingtonpost.com",
+    "n.pr": "npr.org",
+    "bbc.in": "bbc.com",
+    "gu.com": "theguardian.com",
+  };
+  if (ALIASES[host]) return ALIASES[host];
+
+  const parts = host.split(".");
+  if (parts.length <= 2) return host;
+
+  const commonSecondLevelTlds = new Set(["co.uk", "com.au", "co.jp"]);
+  const tail3 = parts.slice(-3).join(".");
+  const tail2 = parts.slice(-2).join(".");
+  if (commonSecondLevelTlds.has(tail2) && parts.length >= 3) return tail3;
+
+  return tail2;
+}
+
+function resolveSeedDomain(host, seedsByDomain) {
+  const raw = normalizeHost(host);
+  const collapsed = collapseDomain(raw);
+  const candidates = [raw, collapsed].filter(Boolean);
+  for (const c of candidates) {
+    if (seedsByDomain[c]) return c;
+  }
+  return "";
+}
+
+function domainFromUrlAny(u) {
+  try {
+    return collapseDomain(new URL(u).hostname);
+  } catch {
+    return "";
+  }
+}
+
+function pickFirst(obj, keys) {
+  for (const k of keys) {
+    if (obj && obj[k] != null && obj[k] !== "") return obj[k];
+  }
+  return null;
+}
+
+function coerceMbfcRows(payload) {
+  if (!payload) return [];
+
+  // already an array
+  if (Array.isArray(payload)) return payload;
+
+  // common wrappers
+  if (Array.isArray(payload.data)) return payload.data;
+  if (Array.isArray(payload.result)) return payload.result;
+  if (Array.isArray(payload.sources)) return payload.sources;
+  if (Array.isArray(payload.ratings)) return payload.ratings;
+
+  // nested wrappers (very common)
+  if (payload.data && Array.isArray(payload.data.data))
+    return payload.data.data;
+  if (payload.data && Array.isArray(payload.data.sources))
+    return payload.data.sources;
+  if (payload.data && Array.isArray(payload.data.ratings))
+    return payload.data.ratings;
+
+  // last resort: first array property found
+  if (typeof payload === "object") {
+    const maybe = Object.values(payload).find((v) => Array.isArray(v));
+    if (Array.isArray(maybe)) return maybe;
+  }
+  return [];
+}
+
+async function seedFromMbfc(apiKey) {
+  const statusEl = document.getElementById("mbfcStatus");
+  statusEl && (statusEl.textContent = "Fetching MBFC…");
+
+  const payload = await mbfcFetchDump(apiKey);
+  const rows = coerceMbfcRows(payload);
+  console.log(
+    "MBFC payload keys:",
+    payload && typeof payload === "object" ? Object.keys(payload) : payload
+  );
+  console.log("MBFC rows length:", rows.length);
+  console.log("MBFC first row sample:", rows[0]);
+  if (!rows.length) {
+    throw new Error(
+      "MBFC returned no rows (parser mismatch). DB was NOT overwritten."
+    );
+  }
+
+  // Convert MBFC rows -> my seed row format
+  const out = [];
+  for (const r of rows) {
+    const sourceUrl = pickFirst(r, [
+      "source_url",
+      "Source URL",
+      "sourceUrl",
+      "SourceUrl",
+      "url",
+      "URL",
+      "website",
+      "Website",
+      "link",
+      "Link"
+    ]);
+    let domain = sourceUrl
+      ? domainFromUrlAny(sourceUrl)
+      : normalizeHost(pickFirst(r, ["domain", "Domain"]) || "");
+    if (!domain) {
+      const rawDomain = pickFirst(r, [
+        "domain",
+        "Domain",
+        "source_domain",
+        "source",
+        "Source",
+        "site",
+        "Site",
+        "hostname",
+        "host",
+        "Host",
+      ]);
+      domain = normalizeHost(String(rawDomain || ""));
+    }
+    if (!domain) continue;
+
+    const label =
+      pickFirst(r, [
+        "name",
+        "Name",
+        "source",
+        "Source",
+        "publisher",
+        "Publisher",
+      ]) || domain;
+
+  const bias =
+    pickFirst(r, [
+      "bias",
+      "Bias",
+      "bias_rating",
+      "Bias Rating",
+      "biasRating",
+      "BiasRating",
+    ]) || "unknown";
+    const factual =
+      pickFirst(r, [
+        "factual_reporting",
+        "Factual Reporting",
+        "factualReporting",
+        "FactualReporting",
+        "factual",
+        "Factual",
+      ]) || "";
+    const credibility =
+      pickFirst(r, [
+        "credibility",
+        "Credibility",
+        "credibility_rating",
+        "Credibility Rating",
+        "credibilityRating",
+        "CredibilityRating",
+      ]) || "";
+
+    const { bucket, x } = mbfcBiasToBucketX(bias);
+    const baselineY = mbfcFactualToBaselineY(factual, credibility);
+
+    out.push({
+      domain,
+      label,
+      bucket,
+      x,
+      baselineY,
+
+      // keep raw labels for debugging
+      mbfc_bias: bias,
+      mbfc_factual: factual,
+      mbfc_credibility: credibility,
+    });
+  }
+
+  // Overwrite IndexedDB
+  if (out.length === 0) {
+    throw new Error(
+      "MBFC import produced 0 usable domains (field mismatch). DB was NOT overwritten."
+    );
+  }
+  const db = await openDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction("sourceRatings", "readwrite");
+    const store = tx.objectStore("sourceRatings");
+    
+    store.clear();
+    out.forEach((row) => store.put(row));
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+
+  await updateDbStatus("MBFC import complete");
+  statusEl &&
+    (statusEl.textContent = `Imported ${out.length} domains from MBFC.`);
+  return out.length;
+}
+
+
 //
 
 function hashToJitter(str, range = 1) {
@@ -165,11 +542,38 @@ function hashToJitter(str, range = 1) {
   return (r - 0.5) * 2 * range; // -range..range
 }
 
+// jitter helpers
+
+function hash01(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) / 4294967295; // 0..1
+}
+
 // prevents things from being drawn outside of the graph
 function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));
 }
 
+function clusterColor(clusterId) {
+  const palette = [
+    "#1f77b4",
+    "#ff7f0e",
+    "#2ca02c",
+    "#d62728",
+    "#9467bd",
+    "#8c564b",
+    "#e377c2",
+    "#7f7f7f",
+    "#bcbd22",
+    "#17becf",
+  ];
+  if (clusterId == null) return "rgba(0,0,0,0.10)";
+  return palette[Math.abs(clusterId) % palette.length];
+}
 
 function secondaryJitter(str, range = 1) {
   const n = (str || "").length;
@@ -179,17 +583,26 @@ function secondaryJitter(str, range = 1) {
 
 // Map bucket x (-2..2) to an Ad-Fontes-like scale (-42..42)
 function bucketToBiasX(bucketX) {
+  const n = Number(bucketX);
+
+  // If it's a real number (including fractional), map linearly:
+  // -2..2 -> -30..30 
+  if (Number.isFinite(n)) {
+    return clamp(n, -2, 2) * 15;
+  }
+
+  // Fallback for string labels if any slip through
   const map = {
-    "-2": -30, // Left
-    "-1": -15, // Lean Left
-    0: 0, // Center
-    1: 15, // Lean Right
-    2: 30, // Right
+    "-2": -30,
+    "-1": -15,
+    0: 0,
+    1: 15,
+    2: 30,
   };
   return map[String(bucketX)] ?? 0;
 }
 
-function drawChart(canvas, points, userPoint) {
+function drawChart(canvas, points, userPoint, clusterInfo = null, outboundTop = [], seedsByDomain = null) {
   const ctx = canvas.getContext("2d");
   const W = canvas.width,
     H = canvas.height;
@@ -209,8 +622,20 @@ function drawChart(canvas, points, userPoint) {
   const plotW = W - leftPad - rightPad;
   const plotH = H - topPad - bottomPad;
 
+  // drawing the chart 
   const px = (x) => leftPad + ((x - xMin) / (xMax - xMin)) * plotW;
-  const py = (y) => topPad + (1 - (y - yMin) / (yMax - yMin)) * plotH;
+  // const py = (y) => topPad + (1 - (y - yMin) / (yMax - yMin)) * plotH;
+  const py = (y) => {
+    // normalize to 0..1
+    const t = clamp((y - yMin) / (yMax - yMin), 0, 1);
+
+    // gamma curve > 1 stretches mid/lower differences visually
+    // try 1.6–2.2
+    const GAMMA = 1.8;
+    const curved = Math.pow(t, 1 / GAMMA);
+
+    return topPad + (1 - curved) * plotH;
+  };
 
   // Background
   ctx.clearRect(0, 0, W, H);
@@ -232,7 +657,7 @@ function drawChart(canvas, points, userPoint) {
     ctx.fillText(String(y), 10, yy + 4);
   }
 
-  //  Axes 
+  //  Axes
   ctx.strokeStyle = "#888";
   ctx.beginPath();
   ctx.moveTo(leftPad, topPad);
@@ -253,7 +678,7 @@ function drawChart(canvas, points, userPoint) {
     ctx.stroke();
   });
 
-  // Top labels: Political Leaning + category labels 
+  // Top labels: Political Leaning + category labels
   ctx.fillStyle = "#111";
   ctx.font = "13px Arial";
   ctx.fillText("Political Leaning", leftPad + plotW / 2 - 55, 12);
@@ -269,14 +694,14 @@ function drawChart(canvas, points, userPoint) {
   ];
   topLabels.forEach((l) => ctx.fillText(l.t, px(l.x) - 22, 38));
 
-  // X numeric ticks 
+  // X numeric ticks
   ctx.fillStyle = "#666";
   ctx.font = "11px Arial";
   [-42, -30, -15, 0, 15, 30, 42].forEach((v) => {
     ctx.fillText(String(v), px(v) - 8, H - 12);
   });
 
-  // Y axis label 
+  // Y axis label
   ctx.save();
   ctx.translate(25, topPad + plotH / 2);
   ctx.rotate(-Math.PI / 2);
@@ -284,28 +709,38 @@ function drawChart(canvas, points, userPoint) {
   ctx.font = "12px Arial";
   ctx.fillText("Reliability / News Value", -50, 50);
   ctx.restore();
+ 
+  // Anchors - data points on the graph
+  // replaced with colored clusters
+  // ctx.fillStyle = "rgba(0,0,0,0.20)";
 
-  // Anchors - data points on the graph  
-  ctx.fillStyle = "rgba(0,0,0,0.25)";
+  // limit data points for better graph resolution
+  const MAX_ANCHORS = 3000; // tune: 1500–4000
+  const keepRate = Math.min(1, MAX_ANCHORS / Math.max(1, points.length));
+
   points.forEach((p) => {
+    // deterministic sampling so it doesn't change every refresh
+    if (p.domain && hash01(p.domain) > keepRate) return;
+
     const baseY = typeof p.baselineY === "number" ? p.baselineY : 40;
 
     // Map bucket x to continuous bias scale
     const xBase = bucketToBiasX(p.x);
 
-    // stable jitter for better spread/ shape
+    // stable jitter for better spread/shape
     const jitterX = p.domain
       ? hashToJitter(p.domain, 8.0) + secondaryJitter(p.domain, 4.0)
       : 0;
     const jitterY = p.domain
-      ? hashToJitter(p.domain, 3.0) + secondaryJitter(p.domain, 2.0)
+      ? hashToJitter(p.domain, 3.5) + secondaryJitter(p.domain, 2.5)
       : 0;
 
     const x = clamp(xBase + jitterX, xMin, xMax);
     const y = clamp(baseY + jitterY, yMin, yMax);
-
+    const cid = clusterInfo?.clusterIds?.get(p.domain);
+    ctx.fillStyle = cid == null ? "rgba(0,0,0,0.10)" : clusterColor(cid);
     ctx.beginPath();
-    ctx.arc(px(x), py(y), 3, 0, Math.PI * 2);
+    ctx.arc(px(x), py(y), 1.5, 0, Math.PI * 2);
     ctx.fill();
   });
 
@@ -317,6 +752,44 @@ function drawChart(canvas, points, userPoint) {
     const ux = clamp(px(uxBase), leftPad + r, W - rightPad - r);
     const uy = clamp(py(userPoint.y), topPad + r, H - bottomPad - r);
 
+    // Draw “connections” from You -> top outbound domains (only if we have the list)
+    if (Array.isArray(outboundTop) && outboundTop.length) {
+      // Build quick lookup for anchor positions by domain (use SAME mapping as anchors)
+      const anchorPos = new Map();
+      for (const p of points) {
+        if (!p.domain) continue;
+
+        const xBase = bucketToBiasX(p.x);
+        const baseY = typeof p.baselineY === "number" ? p.baselineY : 32;
+
+        // IMPORTANT: include the same jitter used for anchors so lines land on dots
+        const jitterX = p.domain
+          ? hashToJitter(p.domain, 8.0) + secondaryJitter(p.domain, 4.0)
+          : 0;
+        const jitterY = p.domain
+          ? hashToJitter(p.domain, 3.5) + secondaryJitter(p.domain, 2.5)
+          : 0;
+
+        const ax = clamp(xBase + jitterX, xMin, xMax);
+        const ay = clamp(baseY + jitterY, yMin, yMax);
+
+        anchorPos.set(p.domain, { x: px(ax), y: py(ay) });
+      }
+
+      ctx.strokeStyle = "rgba(0,0,0,0.08)";
+      ctx.lineWidth = 1;
+
+      for (const d of outboundTop) {
+        const pos = anchorPos.get(d);
+        if (!pos) continue;
+        ctx.beginPath();
+        ctx.moveTo(ux, uy);
+        ctx.lineTo(pos.x, pos.y);
+        ctx.stroke();
+      }
+    }
+
+    // Draw the “You” dot last so it sits on top
     ctx.fillStyle = "#ff0066";
     ctx.beginPath();
     ctx.arc(ux, uy, r, 0, Math.PI * 2);
@@ -332,7 +805,7 @@ function drawChart(canvas, points, userPoint) {
     ctx.fillText(
       "You",
       clamp(ux + 10, leftPad + 4, W - rightPad - 40),
-      clamp(uy + 4, topPad + 12, H - bottomPad - 6)
+      clamp(uy + 4, topPad + 12, H - bottomPad - 6),
     );
   }
 }
@@ -393,6 +866,30 @@ document.getElementById("btnClearDb")?.addEventListener("click", async () => {
   }
 });
 
+document.getElementById("btnFetchMbfc")?.addEventListener("click", async () => {
+  const keyInput = document.getElementById("mbfcApiKey");
+  const statusEl = document.getElementById("mbfcStatus");
+  const btn = document.getElementById("btnFetchMbfc");
+
+  const apiKey = (keyInput?.value || "").trim();
+  if (!apiKey) {
+    statusEl && (statusEl.textContent = "Paste your RapidAPI key first.");
+    return;
+  }
+
+  try {
+    btn.disabled = true;
+    statusEl && (statusEl.textContent = "Importing MBFC data…");
+    await chrome.storage.local.set({ mbfcApiKey: apiKey });
+    const n = await seedFromMbfc(apiKey);
+    statusEl && (statusEl.textContent = `Imported ${n} MBFC domains.`);
+    await loadLastResults();
+  } catch (e) {
+    statusEl && (statusEl.textContent = `MBFC import failed: ${String(e)}`);
+  } finally {
+    btn.disabled = false;
+  }
+});
 // Show DB count on load
 updateDbStatus();
 
@@ -423,10 +920,15 @@ async function loadLastResults() {
   // console.log("[Dashboard] loading lastAnalysis…");
   // 1) Always load/draw seeded anchors
   const canvas = document.getElementById("biasChart");
+  if (!canvas) return;
   const seeds = await getAllSeedPoints();
+  const seedsByDomain = {};
+  for (const s of seeds) seedsByDomain[s.domain] = s;
+
+  const clusterInfo = await computeClustersFromLog(seedsByDomain);
 
   // Draw anchors first (no user dot yet)
-  drawChart(canvas, seeds, null);
+  drawChart(canvas, seeds, null, clusterInfo);
 
   // 2) Read lastAnalysis
   // Previously had save issue, this merges both versions for full data
@@ -441,6 +943,19 @@ async function loadLastResults() {
   // Merge so existing UI continues to work
   const data = { ...popup, ...base };
 
+  const outboundLinks = data.outboundLinks || data.refs || [];
+  const outboundDomains = outboundLinks
+    .map((u) => {
+      try {
+        return resolveSeedDomain(new URL(u).hostname, seedsByDomain);
+      } catch {
+        return "";
+      }
+    })
+    .filter(Boolean);
+
+  const outboundTop = outboundDomains.slice(0, 10);
+
   // ensure url is present
   data.url = data.url || popup.url || base.url || "";
   // please work
@@ -454,7 +969,7 @@ async function loadLastResults() {
   // });
 
   // If no analysis yet, still show how many anchors we have
-  
+
   if (!data.url) {
     document.getElementById("chartSummary").textContent =
       `Loaded ${seeds.length} seeded domains. Run Analyze Page to place your article.`;
@@ -505,17 +1020,29 @@ async function loadLastResults() {
 
   const xBucket = Number(data.x);
   const xArticle = Number(data.articleX);
+  const normalizedCurrentDomain = data.domain
+    ? resolveSeedDomain(data.domain, seedsByDomain) ||
+      collapseDomain(data.domain)
+    : "";
+
+  const dbSeed = normalizedCurrentDomain
+    ? seedsByDomain[normalizedCurrentDomain]
+    : null;
+  const dbX = Number(dbSeed?.x);
+  const dbY = Number(dbSeed?.baselineY);
 
   const x = Number.isFinite(xArticle)
     ? xArticle
     : Number.isFinite(xBucket)
       ? xBucket
-      : 0;
+      : Number.isFinite(dbX)
+        ? dbX
+        : 0;
 
   let y = Number(data.y);
 
-  //testing
   // fallback y if missing (so “You” still shows)
+  if (!Number.isFinite(y) && Number.isFinite(dbY)) y = dbY;
   if (!Number.isFinite(y)) y = 32;
   // if (!Number.isFinite(x)) x = 0;
 
@@ -523,21 +1050,22 @@ async function loadLastResults() {
   // const userPoint = Number.isFinite(x) ? { x, y } : { x: 0, y };
   //const userPoint = Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
 
-const derivedBucket = bucketFromX(x);
+  const derivedBucket = bucketFromX(x);
 
-// if domain baseline exists, use it; otherwise use derived bucket from userPoint
-const bucketLabel =
-  data.bucket && data.bucket !== "unknown"
-    ? prettyBucket(data.bucket)
-    : prettyBucket(derivedBucket);
+  // if domain baseline exists, use it; otherwise use derived bucket from userPoint
+  const bucketLabel =
+    data.bucket && data.bucket !== "unknown"
+      ? prettyBucket(data.bucket)
+      : prettyBucket(derivedBucket);
 
-  drawChart(canvas, seeds, userPoint);
+  drawChart(canvas, seeds, userPoint, clusterInfo, outboundTop, seedsByDomain);
 
   // Political category = bucket
   // Anchor = datapoints
   // Political Category: ${data.bucket || "unknown"}
- document.getElementById("chartSummary").textContent =
-   `Current domain: ${data.domain || "unknown"} | Political Category: ${bucketLabel} | X-axis: ${x} | Y-axis: ${y} | Baseline data points: ${seeds.length}`;
+ 
+  document.getElementById("chartSummary").textContent =
+    `Current domain: ${data.domain || "unknown"} | Political Category: ${bucketLabel} | X-axis: ${x} | Y-axis: ${y} | Baseline data points: ${seeds.length} | Clusters: ${clusterInfo.clusterCount} | Rated outbound: ${outboundTop.length}`;
 
   const whyList = document.getElementById("whyList");
   whyList.innerHTML = "";
@@ -572,5 +1100,10 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 (async () => {
   await seedIfEmpty();
+  (async () => {
+    const saved = await chrome.storage.local.get({ mbfcApiKey: "" });
+    const keyInput = document.getElementById("mbfcApiKey");
+    if (keyInput && saved.mbfcApiKey) keyInput.value = saved.mbfcApiKey;
+  })();
   await loadLastResults();
 })();
