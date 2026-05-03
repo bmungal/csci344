@@ -8,11 +8,10 @@ PLEASE DO THIS
 1. Go to chrome://extensions
 2. Turn on developer mode
 3. Click load unpacked
-4. Select the SusAbility (what you named the folder)
+4. Select the SusAbility folder
 5. Pin SusAbility
 6. Click on the icon
 **************************************************************
-
 
 ## Project overview
 
@@ -50,6 +49,7 @@ Runs the current article analysis and returns:
 - linked-source evidence
 - metadata and references
 - explainable scoring breakdown
+- a progress box in the popup so the user can see what step is happening
 
 ### Generate Citation
 Builds citation text from analyzed article metadata and currently supports:
@@ -57,7 +57,7 @@ Builds citation text from analyzed article metadata and currently supports:
 - APA
 - MLA
 
-The generated citation text is copied to the clipboard.
+The citation view now opens as its own popup section instead of being mixed into the normal analysis summary. Each citation format has its own copy button.
 
 ### Help page
 Provides a simple explanation of:
@@ -66,6 +66,8 @@ Provides a simple explanation of:
 - what the x-axis and y-axis mean
 - what the major signals mean
 - what the buttons do
+- what the popup progress steps mean
+- what the linked-source detail section shows
 
 ### Dashboard
 Opens the larger chart-based view of the analysis, including:
@@ -74,6 +76,9 @@ Opens the larger chart-based view of the analysis, including:
 - source clusters
 - linked-source evidence
 - extended analysis details
+- source-detail tables that can be shown or hidden under the chart
+- clickable linked-source domains
+- layout saving, layout loading, default layout reset, and dark mode
 
 ---
 
@@ -105,6 +110,21 @@ The extension starts with a source reliability baseline when available, then ble
 - framing signals
 - scholarly references / DOI data when available
 
+### Overall Score
+The popup and dashboard now use a user-facing overall score on a 0–100 scale.
+
+- This overall score is based on the extension’s reliability / news-value result.
+- The y-axis still keeps the underlying 0–64 reliability scale for charting.
+- The dashboard also shows an advisory label such as Recommended, Use caution, or Not recommended.
+
+### Linked-source review
+The linked-source model now avoids showing or counting the same domain over and over in the dashboard source-detail tables.
+
+- repeated sources such as `doi.org` are grouped together
+- the combined weight is shown once
+- repeated appearances can be shown as a count like `(3x)`
+- ignored sources are also grouped so the list is cleaner
+
 ---
 
 ## Main files
@@ -112,9 +132,10 @@ The extension starts with a source reliability baseline when available, then ble
 - `manifest.json` — extension configuration
 - `popup.html` — popup UI
 - `popup.css` — popup styles
-- `popup.js` — popup actions, summary score, citation generation
+- `popup.js` — popup actions, progress display, summary score, citation view, and help link
 - `dashboard.html` — dashboard UI
-- `dashboard.js` — chart rendering, settings, clusters, dashboard display
+- `dashboard.css` — dashboard styles
+- `dashboard.js` — chart rendering, settings, clusters, dashboard display, and linked-source detail rendering
 - `service_worker.js` — main analysis pipeline and scoring logic
 - `content.js` — extracts page-level signals from the current article
 - `db.js` — IndexedDB helpers
@@ -132,12 +153,12 @@ The project is focused on improving:
 - reliability scoring accuracy
 - explainable user-facing signals
 - dashboard clarity and customization
-- onboarding and help flow
-- citation support
+- popup clarity and progress feedback
+- citation support and formatting
 
 ---
 
 ## Important note
 
-SusAbility should be used as a guide for review and comparison.  
+SusAbility should be used as a guide for review and comparison.
 Scores and placements are explainable estimates, not absolute truth.

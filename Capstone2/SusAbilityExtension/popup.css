@@ -230,3 +230,107 @@ html,body {
   justify-content: flex-end;
   margin-top: 12px;
 }
+
+
+.actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.progressBox {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid #e6e6ee;
+  border-radius: 10px;
+  background: #fafbff;
+}
+
+.progressTitle {
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.progressList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.progressList li {
+  font-size: 12px;
+  opacity: 0.65;
+  padding-left: 18px;
+  position: relative;
+}
+
+.progressList li::before {
+  content: "○";
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.progressList li.active {
+  opacity: 1;
+  font-weight: 700;
+}
+
+.progressList li.active::before {
+  content: "◉";
+}
+
+.progressList li.done {
+  opacity: 0.9;
+}
+
+.progressList li.done::before {
+  content: "✓";
+}
+
+.smallBtn {
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.citationHeaderRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.citationTitle {
+  margin: 0;
+}
+
+.citationCard {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.citationCardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.citationCardHeader h3 {
+  margin: 0;
+}
+
+.citationText {
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: normal;
+  word-break: break-word;
+}

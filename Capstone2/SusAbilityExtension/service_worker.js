@@ -90,6 +90,7 @@ const OUTLET_PRIORS = {
 
 const MEDIA_FAMILIES = {
   fox: [
+    "fox.com",
     "foxnews.com",
     "foxbusiness.com",
     "foxweather.com",
@@ -138,19 +139,18 @@ function coreHost(host) {
 }
 
 function getLookupVariantsForHost(host) {
-  const raw = String(host || "")
-    .toLowerCase()
-    .replace(/^www\./, "")
-    .trim();
+  // For host lookup, keep this strict.
+  // We only want domain-style variants here
+  const raw = normalizeDomain(
+    String(host || "")
+      .toLowerCase()
+      .replace(/^www\./, "")
+      .trim(),
+  );
+
   const core = coreHost(raw);
 
-  return [
-    raw,
-    core,
-    normalizeLookupText(raw),
-    normalizeLookupText(core),
-    ...(SOURCE_ALIASES[core] || []),
-  ].filter(Boolean);
+  return [...new Set([raw, core].filter(Boolean))];
 }
 
 async function findBestSeedRowForHost(store, host) {
@@ -183,18 +183,28 @@ async function findBestSeedRowForHost(store, host) {
         const v = normalizeLookupText(variant);
         if (!v) continue;
 
-        if (d === v || l === v) score += 100;
-        else if (d.includes(v) || l.includes(v)) score += 35;
-        else if (v.includes(d) || v.includes(l)) score += 15;
+        if (d === v || l === v) {
+          score += 100;
+        } else {
+          const rowDomain = normalizeDomain(row.domain || "");
+          const rowCore = coreHost(rowDomain);
+          const variantDomain = normalizeDomain(variant);
+          const variantCore = coreHost(variantDomain);
+
+          // Only allow a softer match when the core domains clearly match.
+          // This helps stop unrelated domains from drifting into the wrong bucket.
+          if (rowCore && variantCore && rowCore === variantCore) {
+            score += 40;
+          }
+        }
       }
 
       // prefer cleaner/national matches over noisy local affiliate names
       if (/\bfox\s+\d+\b/.test(d) || /\bfox\s+\d+\b/.test(l)) score -= 15;
-      if (/\bnews\b/.test(d) || /\bnews\b/.test(l)) score += 3;
 
       return { row, score };
     })
-    .filter((x) => x.score > 0)
+    .filter((x) => x.score >= 40)
     .sort((a, b) => b.score - a.score);
 
   return scored.length ? scored[0].row : null;
@@ -216,6 +226,7 @@ function normalizeDomain(host) {
 
     // Fox ecosystem
     "fxn.ws": "foxnews.com",
+    "fox.com": "foxnews.com",
 
     // New York Times / Wirecutter ecosystem
     "nyti.ms": "nytimes.com",
@@ -285,7 +296,7 @@ async function getActiveTab() {
   return tab;
 }
 
-// missingFields keeps track of the data we need to find with APIs
+// missingFields keeps track of the data needed to find with APIs
 function missingFields(local) {
   return {
     title: !local?.title,
@@ -320,6 +331,16 @@ const NON_EDITORIAL_EXACT_DOMAINS = new Set([
   "apps.apple.com",
   "play.google.com",
   "ap.org",
+
+  // sharing / platform / app / utility domains
+  "linkedin.com",
+  "flipboard.com",
+  "share.flipboard.com",
+  "onelink.me",
+  "slack.com",
+  "spotify.com",
+  "open.spotify.com",
+  "iheart.com",
 ]);
 
 const NON_EDITORIAL_DOMAIN_PATTERNS = [
@@ -343,6 +364,14 @@ const NON_EDITORIAL_DOMAIN_PATTERNS = [
   "legal",
   "terms",
   "policy",
+
+  // utility / service / promo style patterns
+  "careers",
+  "jobs",
+  "share",
+  "promo",
+  "slack",
+  "onelink",
 ];
 
 const LOW_VALUE_REFERENCE_DOMAINS = new Set([
@@ -376,12 +405,20 @@ function isSameSiteOrSubdomain(linkHost, articleHost) {
 }
 
 function isNonEditorialDomain(hostname) {
-  const host = getRootishHost(hostname);
+  // Check both the full host and the root host so subdomains are handled better.
+  const rawHost = String(hostname || "")
+    .toLowerCase()
+    .replace(/^www\./, "")
+    .trim();
+
+  const host = getRootishHost(rawHost);
   if (!host) return true;
 
+  if (NON_EDITORIAL_EXACT_DOMAINS.has(rawHost)) return true;
   if (NON_EDITORIAL_EXACT_DOMAINS.has(host)) return true;
-  return NON_EDITORIAL_DOMAIN_PATTERNS.some((pattern) =>
-    host.includes(pattern),
+
+  return NON_EDITORIAL_DOMAIN_PATTERNS.some(
+    (pattern) => rawHost.includes(pattern) || host.includes(pattern),
   );
 }
 
@@ -493,9 +530,11 @@ if (!linkInfo.keepForNeighborhood) continue;
   return { counts, avgX: n ? sum / n : 0 };
 }
 
-// look at outbound sources and weighs them/ looks at linked neighborhoods of sources
+// looks at outbound sources and weighs them/ looks at linked neighborhoods of sources
 // filters out social platforms
-// places more weight on initial links
+// places more weight on earlier links
+// this version groups repeated domains so one domain does not overpower the model
+// repeated appearances still matter, but only as a small capped bonus
 async function computeWeightedOutboundNeighborhood(
   outboundLinks = [],
   pageDomain = "",
@@ -518,46 +557,166 @@ async function computeWeightedOutboundNeighborhood(
   const reasons = [];
   const filteredReasons = [];
 
+  // Store grouped rows here so repeated domains are combined for the dashboard
+  const usedMap = new Map();
+  const ignoredMap = new Map();
+
   for (let i = 0; i < outboundLinks.length; i++) {
     const href = outboundLinks[i];
     const linkInfo = classifyOutboundLink(href, pageDomain);
-    const host = linkInfo.host;
+    const host = linkInfo.host || "[invalid]";
 
+    // Ignore same-site, social, support, login, invalid, etc.
     if (!linkInfo.keepForNeighborhood) {
       filteredCount++;
+
       if (filteredReasons.length < 10) {
-        filteredReasons.push(
-          `${host || "[invalid]"} -> filtered (${linkInfo.type})`,
-        );
+        filteredReasons.push(`${host} -> filtered (${linkInfo.type})`);
       }
+
+      // Group ignored domains so the same one is not printed many times
+      const ignoredExisting = ignoredMap.get(host);
+      if (!ignoredExisting) {
+        ignoredMap.set(host, {
+          domain: host,
+          reason: linkInfo.type,
+          occurrences: 1,
+        });
+      } else {
+        ignoredExisting.occurrences += 1;
+      }
+
       continue;
     }
 
     keptCount++;
 
+    // This is the normal per-link weight before grouping.
+    // Editorial links get more weight than low-value references,
+    // and earlier links get a stronger base weight.
+    const positionWeight = getOutboundPositionWeight(i, outboundLinks.length);
+    const baseWeight = linkInfo.weightMultiplier * positionWeight;
+
     const { rating } = await getRatingForHost(host);
+
+    // If the source is not in the database, keep it grouped for display,
+    // but do not let it directly pull the rated x-axis average.
     if (!rating) {
       counts.unknown++;
+
       if (reasons.length < 10) {
         reasons.push(`${host} -> unrated (${linkInfo.type})`);
       }
+
+      const existingUnknown = usedMap.get(host);
+      if (!existingUnknown) {
+        usedMap.set(host, {
+          domain: host,
+          bucket: "unknown",
+          x: 0,
+          type: linkInfo.type,
+          contributed: false,
+          occurrences: 1,
+          maxBaseWeight: baseWeight,
+          totalBaseWeight: baseWeight,
+        });
+      } else {
+        existingUnknown.occurrences += 1;
+        existingUnknown.totalBaseWeight += baseWeight;
+        existingUnknown.maxBaseWeight = Math.max(
+          existingUnknown.maxBaseWeight,
+          baseWeight,
+        );
+      }
+
       continue;
     }
 
-    counts[rating.bucket] = (counts[rating.bucket] || 0) + 1;
+    // Group repeated rated domains instead of counting them as many full votes
+    const existingUsed = usedMap.get(host);
+    if (!existingUsed) {
+      usedMap.set(host, {
+        domain: host,
+        bucket: rating.bucket || "unknown",
+        x: Number(rating.x || 0),
+        type: linkInfo.type,
+        contributed: true,
+        occurrences: 1,
+        maxBaseWeight: baseWeight,
+        totalBaseWeight: baseWeight,
+      });
+    } else {
+      existingUsed.occurrences += 1;
+      existingUsed.totalBaseWeight += baseWeight;
+      existingUsed.maxBaseWeight = Math.max(
+        existingUsed.maxBaseWeight,
+        baseWeight,
+      );
 
-    const positionWeight = getOutboundPositionWeight(i, outboundLinks.length);
-    const finalWeight = linkInfo.weightMultiplier * positionWeight;
+      // If we first saw this domain as unknown and later found a rating,
+      // upgrade it to the rated version.
+      if (existingUsed.bucket === "unknown" && rating.bucket) {
+        existingUsed.bucket = rating.bucket || "unknown";
+        existingUsed.x = Number(rating.x || 0);
+        existingUsed.contributed = true;
+      }
+    }
+  }
 
-    weightedSum += Number(rating.x || 0) * finalWeight;
-    totalWeight += finalWeight;
+  // Final grouped rows for scoring + dashboard
+  const usedDetails = Array.from(usedMap.values()).map((item) => {
+    // Middle-ground rule:
+    // - one unique domain gets one main vote based on its strongest appearance
+    // - repeats add a small extra bonus
+    // - the extra bonus is capped so repeats cannot dominate the model
+    const repeatBonus = Math.min((item.occurrences - 1) * 0.12, 0.6);
+    const finalWeight = Number((item.maxBaseWeight * (1 + repeatBonus)).toFixed(2));
+
+    return {
+      domain: item.domain,
+      bucket: item.bucket,
+      x: item.x,
+      type: item.type,
+      contributed: item.contributed,
+      occurrences: item.occurrences,
+      weight: finalWeight,
+    };
+  });
+
+  const ignoredDetails = Array.from(ignoredMap.values()).map((item) => ({
+    domain: item.domain,
+    reason: item.reason,
+    occurrences: item.occurrences,
+  }));
+
+  // Score only the grouped rated domains
+  for (const item of usedDetails) {
+    if (!item.contributed) continue;
+
+    counts[item.bucket] = (counts[item.bucket] || 0) + 1;
+    weightedSum += Number(item.x || 0) * Number(item.weight || 0);
+    totalWeight += Number(item.weight || 0);
     ratedEditorialCount++;
+  }
 
-    if (reasons.length < 10) {
+  // Keep the detail rows sorted so the strongest contributors appear first
+  usedDetails.sort((a, b) => b.weight - a.weight);
+  ignoredDetails.sort((a, b) => b.occurrences - a.occurrences);
+
+  for (const item of usedDetails.slice(0, 10)) {
+    if (!item.contributed) {
+      reasons.push(`${item.domain} -> unrated (${item.type}, ${item.occurrences}x)`);
+    } else {
       reasons.push(
-        `${host} -> ${rating.bucket} (x=${rating.x}, w=${finalWeight.toFixed(2)}, type=${linkInfo.type})`,
+        `${item.domain} -> ${item.bucket} (x=${item.x}, w=${item.weight.toFixed(2)}, ${item.occurrences}x, type=${item.type})`,
       );
     }
+  }
+
+  for (const item of ignoredDetails.slice(0, 10)) {
+    filteredReasons.push(
+      `${item.domain} -> filtered (${item.reason}, ${item.occurrences}x)`,
+    );
   }
 
   let confidence = 0;
@@ -577,8 +736,11 @@ async function computeWeightedOutboundNeighborhood(
     confidence,
     reasons,
     filteredReasons,
+    usedDetails: usedDetails.slice(0, 25),
+    ignoredDetails: ignoredDetails.slice(0, 25),
   };
 }
+
 
 function computeNeighborhoodAgreementSignals(
   articleShiftTotal,
@@ -1322,6 +1484,25 @@ function computeArticleShift(techniques, semantic, framing) {
   };
 }
 
+
+function shouldUseScholarlyApis(local = {}, pageUrl = "") {
+  const text = `${local?.title || ""} ${local?.publisher || ""} ${local?.pageType || ""} ${local?.text || ""}`.toLowerCase();
+  const url = String(pageUrl || "").toLowerCase();
+
+  return (
+    !!local?.doi ||
+    text.includes("doi") ||
+    text.includes("journal") ||
+    text.includes("research") ||
+    text.includes("study") ||
+    text.includes("paper") ||
+    url.includes("doi.org") ||
+    url.includes("/article/") ||
+    url.includes("/journal/")
+  );
+}
+
+
 // API calls
 async function findWithAPIs(url, need, local) {
   const out = {};
@@ -1462,8 +1643,7 @@ async function findWithAPIs(url, need, local) {
     }
   }
   // 3.Rapid API
-  // things to consider... what api in rapid api are we using for analytics
-  // we need an end point
+  
   const stillMissingTitle = need.title && !out.title;
   const stillMissingAuthor = need.author && !out.author;
   const stillMissingDate = need.date && !out.date;
@@ -1515,6 +1695,100 @@ async function rapidApiLookup(pageUrl) {
   };
 }
 
+
+function isLikelyScholarlyPage(data = {}) {
+  const domain = String(data.domain || data.url || "").toLowerCase();
+  const publisher = String(data.publisher || "").toLowerCase();
+  const pageType = String(data.pageType || "").toLowerCase();
+  const doi = String(data.doi || "").trim();
+  const referenceCount = Number(data.referenceCount || 0);
+  const citedByCount =
+    typeof data.citedByCount === "number" ? data.citedByCount : null;
+
+  const scholarlyDomainHints = [
+    "nature.com",
+    "springer.com",
+    "sciencedirect.com",
+    "wiley.com",
+    "tandfonline.com",
+    "frontiersin.org",
+    "mdpi.com",
+    "jamanetwork.com",
+    "bmj.com",
+    "thelancet.com",
+    "cell.com",
+    "nejm.org",
+    "ncbi.nlm.nih.gov",
+    "pubmed.ncbi.nlm.nih.gov",
+  ];
+
+  const scholarlyPublisherHints = [
+    "nature",
+    "springer",
+    "elsevier",
+    "wiley",
+    "frontiers",
+    "mdpi",
+    "jama",
+    "bmj",
+    "lancet",
+    "cell press",
+    "new england journal of medicine",
+  ];
+
+  return (
+    !!doi ||
+    referenceCount >= 8 ||
+    Number.isFinite(citedByCount) ||
+    pageType.includes("schol") ||
+    pageType.includes("journal") ||
+    pageType.includes("research") ||
+    scholarlyDomainHints.some((hint) => domain.includes(hint)) ||
+    scholarlyPublisherHints.some((hint) => publisher.includes(hint))
+  );
+}
+
+function getScholarlyBaselineY(data = {}, rating = null) {
+  if (typeof rating?.baselineY === "number") return rating.baselineY;
+
+  const domain = String(data.domain || data.url || "").toLowerCase();
+  const publisher = String(data.publisher || "").toLowerCase();
+
+  const highTrustScholarlyHints = [
+    "nature.com",
+    "sciencedirect.com",
+    "wiley.com",
+    "jamanetwork.com",
+    "bmj.com",
+    "thelancet.com",
+    "nejm.org",
+    "cell.com",
+  ];
+
+  const highTrustPublisherHints = [
+    "nature",
+    "springer nature",
+    "jama",
+    "bmj",
+    "lancet",
+    "new england journal of medicine",
+    "cell press",
+  ];
+
+  if (
+    highTrustScholarlyHints.some((hint) => domain.includes(hint)) ||
+    highTrustPublisherHints.some((hint) => publisher.includes(hint))
+  ) {
+    return 60;
+  }
+
+  if (isLikelyScholarlyPage(data)) {
+    return 54;
+  }
+
+  return 32;
+}
+
 // better point system for y-axis graph
 // based off of Ad fontes
 
@@ -1522,6 +1796,7 @@ function computeReliabilityScore(data) {
   // Similar to Ad Fontes: Evidence & sourcing + reporting quality - penalties, scaled 0–64
   let y = 0;
   const why = [];
+  const scholarlyPage = isLikelyScholarlyPage(data);
 
   // Evidence & sourcing (0–36)
   const outboundCounts = data.outboundSkew?.counts || {};
@@ -1577,10 +1852,17 @@ function computeReliabilityScore(data) {
     why.push("+3: some sourcing diversity (2 categories)");
   }
 
-  // Penalize pages whose outbound profile is mostly unknown/unrated
+  // Penalize pages whose outbound profile is mostly unknown/unrated.
+  // For scholarly pages, many citations point to domains that are simply not in our political source DB,
+  // so this penalty should be much lighter.
   if (extTotal >= 5) {
     const unknownRatio = extUnknown / extTotal;
-    if (unknownRatio >= 0.7) {
+    if (scholarlyPage) {
+      if (unknownRatio >= 0.85) {
+        y -= 1;
+        why.push("-1: many scholarly reference domains are not rated in the local DB");
+      }
+    } else if (unknownRatio >= 0.7) {
       y -= 6;
       why.push("-6: most outbound sources are unknown/unrated");
     } else if (unknownRatio >= 0.5) {
@@ -1606,9 +1888,21 @@ function computeReliabilityScore(data) {
     y += 1;
     why.push("+1: HTTPS");
   }
-  if (typeof data.sourceBaselineY === "number") {
+  if (data.sourceMatched === true) {
     y += 4;
     why.push("+4: matched known rated source baseline");
+  }
+
+  // Scholarly article pages should get credit for being formal research pages,
+  // not treated like ordinary web articles.
+  if (scholarlyPage) {
+    y += 8;
+    why.push("+8: scholarly article format");
+
+    if (typeof data.citedByCount === "number" && data.citedByCount > 0) {
+      y += 2;
+      why.push("+2: cited by other work");
+    }
   }
 
   //notes the lean of outbound sources
@@ -1665,8 +1959,26 @@ function computeReliabilityScore(data) {
     why.push("+4 DOI present");
   }
 
-  const refs = Array.isArray(data.references) ? data.references.length : 0;
-  if (refs >= 10) {
+  const refs = Math.max(
+    Array.isArray(data.references) ? data.references.length : 0,
+    Number(data.referenceCount || 0),
+  );
+
+  if (scholarlyPage) {
+    if (refs >= 20) {
+      y += 10;
+      why.push("+10: strong scholarly references");
+    } else if (refs >= 10) {
+      y += 8;
+      why.push("+8: strong scholarly references");
+    } else if (refs >= 3) {
+      y += 5;
+      why.push("+5: some scholarly references (3–9)");
+    } else if (refs > 0) {
+      y += 3;
+      why.push("+3: minimal scholarly references (1–2)");
+    }
+  } else if (refs >= 10) {
     y += 6;
     why.push("+6: strong references");
   } else if (refs >= 3) {
@@ -1705,7 +2017,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const need = missingFields(local);
 
     // 3) Call APIs only if needed
-    const apiData = await findWithAPIs(pageUrl, need, local);
+    const useApis = msg?.settings?.useApis !== false;
+    const shouldCallApis = useApis && shouldUseScholarlyApis(local, pageUrl);
+    const apiData = shouldCallApis
+      ? await findWithAPIs(pageUrl, need, local)
+      : {};
 
     // 4) Merge: prefer local values, fill missing with apiData
     const merged = {
@@ -1749,8 +2065,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     merged.domain = domain;
     merged.bucket = rating?.bucket || "unknown";
     merged.x = typeof rating?.x === "number" ? rating.x : 0;
-    merged.sourceBaselineY =
-      typeof rating?.baselineY === "number" ? rating.baselineY : 32;
+    // Use the source baseline from the DB when available.
+    // If the source is a likely scholarly article page, give it a stronger scholarly baseline
+    // instead of the ordinary fallback.
+    merged.sourceBaselineY = getScholarlyBaselineY(merged, rating);
+    merged.sourceMatched = !!rating;
 
     // Y axis (reliability) from scoring
     // 1) outbound skew (external sources only)
@@ -1766,6 +2085,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       merged.textSample || "",
     );
     merged.weightedNeighborhood = weightedNeighborhood;
+    merged.linkReview = {
+      used: Array.isArray(weightedNeighborhood.usedDetails)
+        ? weightedNeighborhood.usedDetails
+        : [],
+      ignored: Array.isArray(weightedNeighborhood.ignoredDetails)
+        ? weightedNeighborhood.ignoredDetails
+        : [],
+    };
 
     // Build a political baseline from source matching with db, then look at outbound rated links if needed
 
@@ -1898,6 +2225,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     merged.articleX = clamp(merged.articleX + outletPriorAdj, -2, 2);
     merged.bucket = getPoliticalBucketFromX(merged.articleX);
 
+    // Save the x-axis pieces directly so the dashboard can explain the ranking clearly.
+    // This keeps the UI from having to guess from text-only explanation lines.
+    merged.xModel = {
+      sourcePriorX,
+      neighborhoodX,
+      neighborhoodShift,
+      articleShiftTotal: articleShift.total,
+      semanticShift: articleShift.semanticShift,
+      framingShift: articleShift.framingShift,
+      languageShift: articleShift.languageShift,
+      neighborhoodAgreementShift: neighborhoodAgreement.shift,
+      outletPriorAdjustment: outletPriorAdj,
+      finalArticleX: merged.articleX,
+    };
+
     const placementConfidence = computePlacementConfidence(
       sourceFound,
       weightedNeighborhood,
@@ -1919,18 +2261,41 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       `Article shift: semantic=${articleShift.semanticShift.toFixed(2)}, framing=${articleShift.framingShift.toFixed(2)}, language=${articleShift.languageShift.toFixed(2)}`,
     );
 
-    // 4) NOW compute Y using Ad Fontes-ish reliability scoring
-    const scored = computeReliabilityScore(merged);
-    const baseY = Number.isFinite(merged.sourceBaselineY)
-      ? merged.sourceBaselineY
-      : 32;
+    // 4) compute Y using Ad Fontes-ish reliability scoring
+   const scored = computeReliabilityScore(merged);
+   const baseY = Number.isFinite(merged.sourceBaselineY)
+     ? merged.sourceBaselineY
+     : 32;
 
-    // Blend source reliability baseline with article-level evidence
-    merged.y = clamp(baseY * 0.6 + scored.y * 0.4, 0, 64);
-    merged.why = (merged.why || []).concat(scored.why);
-    merged.why.push(
-      `Y baseline=${baseY.toFixed(2)}, articleScore=${scored.y.toFixed(2)}, final y=${merged.y.toFixed(2)}`,
-    );
+   // Blend source reliability baseline with article-level evidence
+   merged.y = clamp(baseY * 0.6 + scored.y * 0.4, 0, 64);
+
+   // Overall score shown to users: 0–100
+   merged.score = Math.round((merged.y / 64) * 100);
+
+   if (merged.score >= 75) {
+     merged.advisory = "Recommended";
+   } else if (merged.score >= 60) {
+     merged.advisory = "Use caution";
+   } else {
+     merged.advisory = "Not recommended";
+   }
+
+   // Save the y-axis pieces directly so the dashboard can explain the score clearly.
+   // This keeps the UI from relying on one generic sentence.
+   merged.yModel = {
+     sourceBaselineY: baseY,
+     articleReliabilityScore: scored.y,
+     finalY: merged.y,
+     overallScore100: merged.score,
+     usedSourceBaselineBlend: "60/40",
+     reliabilityReasons: Array.isArray(scored.why) ? scored.why : [],
+   };
+
+   merged.why = (merged.why || []).concat(scored.why);
+   merged.why.push(
+     `Y baseline=${baseY.toFixed(2)}, articleScore=${scored.y.toFixed(2)}, final y=${merged.y.toFixed(2)}`,
+   );
 
     // Add explainable bullets
     merged.why.push(

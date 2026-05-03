@@ -5,10 +5,268 @@ function showRoute(route) {
   dash.classList.toggle("hidden", route !== "dashboard");
   set.classList.toggle("hidden", route !== "settings");
 
-  document.querySelectorAll(".sideItem").forEach((btn) => {
+  document.querySelectorAll(".sideItem[data-route]").forEach((btn) => {
     btn.classList.toggle("sideActive", btn.dataset.route === route);
   });
 }
+
+/* ---------- Layout helpers ---------- */
+ 
+const DEFAULT_CARD_ORDER = [
+  "overall",
+  "signals",
+  "breakdown",
+  "chart",
+];
+const DEFAULT_CARD_VISIBILITY = {
+  overall: true,
+  signals: true,
+  breakdown: true,
+  chart: true,
+};
+
+function getDashboardCards() {
+  return Array.from(document.querySelectorAll(".dashboardCard"));
+}
+
+function applyCardOrder(order) {
+  const grid = document.getElementById("dashboardGrid");
+  if (!grid) return;
+
+  const cardMap = new Map(
+    getDashboardCards().map((card) => [card.dataset.cardId, card]),
+  );
+
+  order.forEach((id) => {
+    const card = cardMap.get(id);
+    if (card) grid.appendChild(card);
+  });
+}
+
+function getCurrentCardOrder() {
+  return getDashboardCards().map((card) => card.dataset.cardId);
+}
+
+function applyCardVisibility(visibility) {
+  getDashboardCards().forEach((card) => {
+    const id = card.dataset.cardId;
+    const visible = visibility[id] !== false;
+    card.classList.toggle("cardHidden", !visible);
+  });
+
+  document.querySelectorAll("[data-toggle-card]").forEach((input) => {
+    const id = input.dataset.toggleCard;
+    input.checked = visibility[id] !== false;
+  });
+}
+
+function getCardVisibilityState() {
+  const visibility = {};
+  document.querySelectorAll("[data-toggle-card]").forEach((input) => {
+    visibility[input.dataset.toggleCard] = input.checked;
+  });
+  return visibility;
+}
+
+async function saveDashboardLayout(slotName) {
+  const order = getCurrentCardOrder();
+  const visibility = getCardVisibilityState();
+
+  await chrome.storage.local.set({
+    [slotName]: { order, visibility },
+  });
+
+  const status = document.getElementById("layoutStatus");
+  if (status) status.textContent = `Saved current dashboard to ${slotName}.`;
+}
+
+async function loadDashboardLayout(slotName) {
+  const saved = await chrome.storage.local.get({
+    [slotName]: null,
+  });
+
+  const layout = saved[slotName];
+  if (!layout) {
+    const status = document.getElementById("layoutStatus");
+    if (status) status.textContent = `No saved layout found in ${slotName}.`;
+    return;
+  }
+
+  applyCardOrder(layout.order || DEFAULT_CARD_ORDER);
+  applyCardVisibility(layout.visibility || DEFAULT_CARD_VISIBILITY);
+
+  const status = document.getElementById("layoutStatus");
+  if (status) status.textContent = `Loaded dashboard layout from ${slotName}.`;
+}
+
+async function resetDashboardLayout() {
+  applyCardOrder(DEFAULT_CARD_ORDER);
+  applyCardVisibility(DEFAULT_CARD_VISIBILITY);
+
+  const status = document.getElementById("layoutStatus");
+  if (status) status.textContent = "Dashboard reset to default layout.";
+}
+
+function setupDragAndDrop() {
+  const cards = getDashboardCards();
+  const grid = document.getElementById("dashboardGrid");
+  if (!grid) return;
+
+  let dragged = null;
+
+  cards.forEach((card) => {
+    card.addEventListener("dragstart", () => {
+      dragged = card;
+      card.classList.add("dragging");
+    });
+
+    card.addEventListener("dragend", () => {
+      card.classList.remove("dragging");
+      dragged = null;
+    });
+
+    card.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      if (!dragged || dragged === card) return;
+
+      const rect = card.getBoundingClientRect();
+      const before = e.clientY < rect.top + rect.height / 2;
+      const parent = card.parentNode;
+
+      if (before) {
+        parent.insertBefore(dragged, card);
+      } else {
+        parent.insertBefore(dragged, card.nextSibling);
+      }
+    });
+  });
+}
+
+async function loadUiPreferences() {
+  const saved = await chrome.storage.local.get({
+    dashboardLayout1: null,
+    dashboardLayout2: null,
+    dashboardTheme: "light",
+    dashboardCardVisibility: DEFAULT_CARD_VISIBILITY,
+  });
+
+  applyCardVisibility(saved.dashboardCardVisibility || DEFAULT_CARD_VISIBILITY);
+
+  document.body.classList.toggle("darkMode", saved.dashboardTheme === "dark");
+
+  const darkToggle = document.getElementById("setDarkMode");
+  if (darkToggle) darkToggle.checked = saved.dashboardTheme === "dark";
+}
+
+function hookLayoutControls() {
+  document
+    .getElementById("btnSaveLayout1")
+    ?.addEventListener("click", async () => {
+      await chrome.storage.local.set({
+        dashboardCardVisibility: getCardVisibilityState(),
+      });
+      await saveDashboardLayout("dashboardLayout1");
+    });
+
+  document
+    .getElementById("btnLoadLayout1")
+    ?.addEventListener("click", async () => {
+      await loadDashboardLayout("dashboardLayout1");
+    });
+
+  document
+    .getElementById("btnSaveLayout2")
+    ?.addEventListener("click", async () => {
+      await chrome.storage.local.set({
+        dashboardCardVisibility: getCardVisibilityState(),
+      });
+      await saveDashboardLayout("dashboardLayout2");
+    });
+
+  document
+    .getElementById("btnLoadLayout2")
+    ?.addEventListener("click", async () => {
+      await loadDashboardLayout("dashboardLayout2");
+    });
+
+  document
+    .getElementById("btnResetLayout")
+    ?.addEventListener("click", async () => {
+      await resetDashboardLayout();
+    });
+
+  document.querySelectorAll("[data-toggle-card]").forEach((input) => {
+    input.addEventListener("change", async () => {
+      const visibility = getCardVisibilityState();
+      applyCardVisibility(visibility);
+      await chrome.storage.local.set({ dashboardCardVisibility: visibility });
+    });
+  });
+
+  document
+    .getElementById("setDarkMode")
+    ?.addEventListener("change", async (e) => {
+      const isDark = e.target.checked;
+      document.body.classList.toggle("darkMode", isDark);
+      await chrome.storage.local.set({
+        dashboardTheme: isDark ? "dark" : "light",
+      });
+    });
+}
+
+// explanation of results to user
+
+function simplifyWhyLine(line) {
+  if (line.startsWith("Source prior fallback")) {
+    return "Starting position used a known outlet fallback because the source database match was weak.";
+  }
+
+  if (line.startsWith("Source prior")) {
+    return line.replace(
+      /Source prior:?/i,
+      "Starting position from source database:",
+    );
+  }
+
+  if (line.startsWith("Weighted neighborhood")) {
+    return line
+      .replace(/Weighted neighborhood:?/i, "Linked-source pattern:")
+      .replace(/avgX=/i, "average placement=")
+      .replace(/rated=/i, "rated sources=");
+  }
+
+  if (line.startsWith("Filtered neighborhood links")) {
+    return "Some links were ignored because they were same-site, same-family, social, login, support, or other non-editorial links.";
+  }
+
+  if (line.startsWith("Neighborhood agreement")) {
+    return line.replace(
+      /Neighborhood agreement:?/i,
+      "How well the linked sources agree:",
+    );
+  }
+
+  if (line.startsWith("Article shift")) {
+    return line
+      .replace(/Article shift:?/i, "Article wording shift:")
+      .replace(/semantic=/i, "topic cues=")
+      .replace(/framing=/i, "story angle=")
+      .replace(/language=/i, "tone and wording=");
+  }
+
+  if (line.startsWith("X model")) {
+    return "Final political placement was calculated from the source starting point, linked-source pattern, and article wording.";
+  }
+
+  if (line.startsWith("Y baseline")) {
+     return "Reliability score starts with the source's database baseline, then adjusts using sourcing quality (linked sources, known/rated sources, and source diversity) and article-level reporting signals such as author, date, publisher, opinion labels, references, DOI, and wording/framing cues.";
+  }
+
+  return line;
+}
+ 
+
+/* ---------- DB / seed logic ---------- */
 
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -31,10 +289,8 @@ function openDb() {
 }
 
 function applyBaselineY(rows) {
-  // Default baseline (neutral; ideology ≠ reliability)
   const DEFAULT_Y = 40;
 
-  // (0–64 scale)
   const OVERRIDES = {
     "reuters.com": 58,
     "apnews.com": 58,
@@ -96,8 +352,8 @@ async function seedIfEmpty() {
   if (existing.length > 0) return;
 
   const seedUrl = chrome.runtime.getURL("seed_sources.json");
- let rows = await (await fetch(seedUrl)).json();
- rows = applyBaselineY(rows);
+  let rows = await (await fetch(seedUrl)).json();
+  rows = applyBaselineY(rows);
 
   const db = await openDb();
   await new Promise((resolve, reject) => {
@@ -109,13 +365,11 @@ async function seedIfEmpty() {
   });
 }
 
-// reseed database for changes (editing phase)
 async function forceReseedDb() {
   const seedUrl =
     chrome.runtime.getURL("seed_sources.json") + `?t=${Date.now()}`;
   let rows = await (await fetch(seedUrl, { cache: "no-store" })).json();
 
-  // Keep this so missing baselineY still gets a value
   rows = applyBaselineY(rows);
 
   const db = await openDb();
@@ -157,7 +411,6 @@ async function updateDbStatus(message = "") {
   }
 }
 
-// helps MBFC labels match more reliably
 function mbfcBiasToBucketX(biasLabel = "") {
   const s = String(biasLabel).toLowerCase().trim();
 
@@ -191,7 +444,6 @@ function mbfcBiasToBucketX(biasLabel = "") {
 }
 
 function mbfcFactualToBaselineY(factualLabel = "", credibilityLabel = "") {
-  // Map MBFC factual reporting category -> 0..64 baseline
   const f = String(factualLabel).toLowerCase();
   let y;
 
@@ -201,9 +453,8 @@ function mbfcFactualToBaselineY(factualLabel = "", credibilityLabel = "") {
   else if (f.includes("mixed")) y = 32;
   else if (f.includes("low")) y = 20;
   else if (f.includes("very low")) y = 12;
-  else y = 32; // unknown -> mid
+  else y = 32;
 
-  // small adjustment using credibility
   const c = String(credibilityLabel).toLowerCase();
   if (c.includes("high")) y += 4;
   else if (c.includes("low")) y -= 4;
@@ -256,7 +507,6 @@ async function computeClustersFromLog(seedsByDomain) {
     }
   };
 
-  // Only include domains that actually appear in the log graph
   const active = new Set();
   const edges = [];
 
@@ -278,7 +528,6 @@ async function computeClustersFromLog(seedsByDomain) {
     }
   }
 
-  // If we don't have enough activity, return "no clusters"
   if (active.size === 0) {
     return { clusterCount: 0, clusterIds: new Map() };
   }
@@ -301,7 +550,6 @@ async function computeClustersFromLog(seedsByDomain) {
     clusterIds,
   };
 }
-
 
 async function mbfcFetchDump(apiKey) {
   const url =
@@ -376,16 +624,12 @@ function pickFirst(obj, keys) {
 function coerceMbfcRows(payload) {
   if (!payload) return [];
 
-  // already an array
   if (Array.isArray(payload)) return payload;
-
-  // common wrappers
   if (Array.isArray(payload.data)) return payload.data;
   if (Array.isArray(payload.result)) return payload.result;
   if (Array.isArray(payload.sources)) return payload.sources;
   if (Array.isArray(payload.ratings)) return payload.ratings;
 
-  // nested wrappers (very common)
   if (payload.data && Array.isArray(payload.data.data))
     return payload.data.data;
   if (payload.data && Array.isArray(payload.data.sources))
@@ -393,7 +637,6 @@ function coerceMbfcRows(payload) {
   if (payload.data && Array.isArray(payload.data.ratings))
     return payload.data.ratings;
 
-  // last resort: first array property found
   if (typeof payload === "object") {
     const maybe = Object.values(payload).find((v) => Array.isArray(v));
     if (Array.isArray(maybe)) return maybe;
@@ -407,19 +650,13 @@ async function seedFromMbfc(apiKey) {
 
   const payload = await mbfcFetchDump(apiKey);
   const rows = coerceMbfcRows(payload);
-  console.log(
-    "MBFC payload keys:",
-    payload && typeof payload === "object" ? Object.keys(payload) : payload
-  );
-  console.log("MBFC rows length:", rows.length);
-  console.log("MBFC first row sample:", rows[0]);
+
   if (!rows.length) {
     throw new Error(
-      "MBFC returned no rows (parser mismatch). DB was NOT overwritten."
+      "MBFC returned no rows (parser mismatch). DB was NOT overwritten.",
     );
   }
 
-  // Convert MBFC rows -> my seed row format
   const out = [];
   for (const r of rows) {
     const sourceUrl = pickFirst(r, [
@@ -432,7 +669,7 @@ async function seedFromMbfc(apiKey) {
       "website",
       "Website",
       "link",
-      "Link"
+      "Link",
     ]);
     let domain = sourceUrl
       ? domainFromUrlAny(sourceUrl)
@@ -464,15 +701,15 @@ async function seedFromMbfc(apiKey) {
         "Publisher",
       ]) || domain;
 
-  const bias =
-    pickFirst(r, [
-      "bias",
-      "Bias",
-      "bias_rating",
-      "Bias Rating",
-      "biasRating",
-      "BiasRating",
-    ]) || "unknown";
+    const bias =
+      pickFirst(r, [
+        "bias",
+        "Bias",
+        "bias_rating",
+        "Bias Rating",
+        "biasRating",
+        "BiasRating",
+      ]) || "unknown";
     const factual =
       pickFirst(r, [
         "factual_reporting",
@@ -501,25 +738,23 @@ async function seedFromMbfc(apiKey) {
       bucket,
       x,
       baselineY,
-
-      // keep raw labels for debugging
       mbfc_bias: bias,
       mbfc_factual: factual,
       mbfc_credibility: credibility,
     });
   }
 
-  // Overwrite IndexedDB
   if (out.length === 0) {
     throw new Error(
-      "MBFC import produced 0 usable domains (field mismatch). DB was NOT overwritten."
+      "MBFC import produced 0 usable domains (field mismatch). DB was NOT overwritten.",
     );
   }
+
   const db = await openDb();
   await new Promise((resolve, reject) => {
     const tx = db.transaction("sourceRatings", "readwrite");
     const store = tx.objectStore("sourceRatings");
-    
+
     store.clear();
     out.forEach((row) => store.put(row));
     tx.oncomplete = resolve;
@@ -532,17 +767,14 @@ async function seedFromMbfc(apiKey) {
   return out.length;
 }
 
-
-//
+/* ---------- Chart helpers ---------- */
 
 function hashToJitter(str, range = 1) {
   let h = 0;
   for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
-  const r = (h % 1000) / 1000; // 0..1
-  return (r - 0.5) * 2 * range; // -range..range
+  const r = (h % 1000) / 1000;
+  return (r - 0.5) * 2 * range;
 }
-
-// jitter helpers
 
 function hash01(str) {
   let h = 2166136261;
@@ -550,10 +782,9 @@ function hash01(str) {
     h ^= str.charCodeAt(i);
     h = Math.imul(h, 16777619);
   }
-  return (h >>> 0) / 4294967295; // 0..1
+  return (h >>> 0) / 4294967295;
 }
 
-// prevents things from being drawn outside of the graph
 function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));
 }
@@ -577,21 +808,16 @@ function clusterColor(clusterId) {
 
 function secondaryJitter(str, range = 1) {
   const n = (str || "").length;
-  return ((n % 7) - 3) * (range / 3); // roughly -range..+range
+  return ((n % 7) - 3) * (range / 3);
 }
 
-
-// Map bucket x (-2..2) to an Ad-Fontes-like scale (-42..42)
 function bucketToBiasX(bucketX) {
   const n = Number(bucketX);
 
-  // If it's a real number (including fractional), map linearly:
-  // -2..2 -> -30..30 
   if (Number.isFinite(n)) {
     return clamp(n, -2, 2) * 15;
   }
 
-  // Fallback for string labels if any slip through
   const map = {
     "-2": -30,
     "-1": -15,
@@ -602,19 +828,23 @@ function bucketToBiasX(bucketX) {
   return map[String(bucketX)] ?? 0;
 }
 
-function drawChart(canvas, points, userPoint, clusterInfo = null, outboundTop = [], seedsByDomain = null) {
+function drawChart(
+  canvas,
+  points,
+  userPoint,
+  clusterInfo = null,
+  outboundTop = [],
+  seedsByDomain = null,
+) {
   const ctx = canvas.getContext("2d");
   const W = canvas.width,
     H = canvas.height;
 
-  // Ad Fontes-like x range (what I based my graph design on)
   const xMin = -42,
     xMax = 42;
-  // Keep y scale 0–64
   const yMin = 0,
     yMax = 64;
 
-  // Padding: extra top room for top labels
   const leftPad = 85,
     rightPad = 20,
     topPad = 55,
@@ -622,27 +852,18 @@ function drawChart(canvas, points, userPoint, clusterInfo = null, outboundTop = 
   const plotW = W - leftPad - rightPad;
   const plotH = H - topPad - bottomPad;
 
-  // drawing the chart 
   const px = (x) => leftPad + ((x - xMin) / (xMax - xMin)) * plotW;
-  // const py = (y) => topPad + (1 - (y - yMin) / (yMax - yMin)) * plotH;
   const py = (y) => {
-    // normalize to 0..1
     const t = clamp((y - yMin) / (yMax - yMin), 0, 1);
-
-    // gamma curve > 1 stretches mid/lower differences visually
-    // try 1.6–2.2
     const GAMMA = 1.8;
     const curved = Math.pow(t, 1 / GAMMA);
-
     return topPad + (1 - curved) * plotH;
   };
 
-  // Background
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = "#fff";
   ctx.fillRect(0, 0, W, H);
 
-  // Grid lines (Y) + y labels
   ctx.strokeStyle = "rgba(0,0,0,0.08)";
   ctx.lineWidth = 1;
   ctx.font = "12px Arial";
@@ -657,7 +878,6 @@ function drawChart(canvas, points, userPoint, clusterInfo = null, outboundTop = 
     ctx.fillText(String(y), 10, yy + 4);
   }
 
-  //  Axes
   ctx.strokeStyle = "#888";
   ctx.beginPath();
   ctx.moveTo(leftPad, topPad);
@@ -665,9 +885,6 @@ function drawChart(canvas, points, userPoint, clusterInfo = null, outboundTop = 
   ctx.lineTo(W - rightPad, H - bottomPad);
   ctx.stroke();
 
-  // Vertical dividers at category boundaries
-  // Using bias x positions: -30, -15, 0, 15, 30
-  // boundaries halfway: -22.5, -7.5, 7.5, 22.5
   const dividers = [-22.5, -7.5, 7.5, 22.5];
   ctx.strokeStyle = "rgba(0,0,0,0.15)";
   dividers.forEach((d) => {
@@ -678,7 +895,6 @@ function drawChart(canvas, points, userPoint, clusterInfo = null, outboundTop = 
     ctx.stroke();
   });
 
-  // Top labels: Political Leaning + category labels
   ctx.fillStyle = "#111";
   ctx.font = "13px Arial";
   ctx.fillText("Political Leaning", leftPad + plotW / 2 - 55, 12);
@@ -694,14 +910,12 @@ function drawChart(canvas, points, userPoint, clusterInfo = null, outboundTop = 
   ];
   topLabels.forEach((l) => ctx.fillText(l.t, px(l.x) - 22, 38));
 
-  // X numeric ticks
   ctx.fillStyle = "#666";
   ctx.font = "11px Arial";
   [-42, -30, -15, 0, 15, 30, 42].forEach((v) => {
     ctx.fillText(String(v), px(v) - 8, H - 12);
   });
 
-  // Y axis label
   ctx.save();
   ctx.translate(25, topPad + plotH / 2);
   ctx.rotate(-Math.PI / 2);
@@ -709,25 +923,16 @@ function drawChart(canvas, points, userPoint, clusterInfo = null, outboundTop = 
   ctx.font = "12px Arial";
   ctx.fillText("Reliability / News Value", -50, 50);
   ctx.restore();
- 
-  // Anchors - data points on the graph
-  // replaced with colored clusters
-  // ctx.fillStyle = "rgba(0,0,0,0.20)";
 
-  // limit data points for better graph resolution
-  const MAX_ANCHORS = 3000; // tune: 1500–4000
+  const MAX_ANCHORS = 3000;
   const keepRate = Math.min(1, MAX_ANCHORS / Math.max(1, points.length));
 
   points.forEach((p) => {
-    // deterministic sampling so it doesn't change every refresh
     if (p.domain && hash01(p.domain) > keepRate) return;
 
     const baseY = typeof p.baselineY === "number" ? p.baselineY : 40;
-
-    // Map bucket x to continuous bias scale
     const xBase = bucketToBiasX(p.x);
 
-    // stable jitter for better spread/shape
     const jitterX = p.domain
       ? hashToJitter(p.domain, 8.0) + secondaryJitter(p.domain, 4.0)
       : 0;
@@ -744,7 +949,6 @@ function drawChart(canvas, points, userPoint, clusterInfo = null, outboundTop = 
     ctx.fill();
   });
 
-  // ----- User point -----
   if (userPoint) {
     const r = 6;
 
@@ -752,9 +956,7 @@ function drawChart(canvas, points, userPoint, clusterInfo = null, outboundTop = 
     const ux = clamp(px(uxBase), leftPad + r, W - rightPad - r);
     const uy = clamp(py(userPoint.y), topPad + r, H - bottomPad - r);
 
-    // Draw “connections” from You -> top outbound domains (only if we have the list)
     if (Array.isArray(outboundTop) && outboundTop.length) {
-      // Build quick lookup for anchor positions by domain (use SAME mapping as anchors)
       const anchorPos = new Map();
       for (const p of points) {
         if (!p.domain) continue;
@@ -762,7 +964,6 @@ function drawChart(canvas, points, userPoint, clusterInfo = null, outboundTop = 
         const xBase = bucketToBiasX(p.x);
         const baseY = typeof p.baselineY === "number" ? p.baselineY : 32;
 
-        // IMPORTANT: include the same jitter used for anchors so lines land on dots
         const jitterX = p.domain
           ? hashToJitter(p.domain, 8.0) + secondaryJitter(p.domain, 4.0)
           : 0;
@@ -789,13 +990,11 @@ function drawChart(canvas, points, userPoint, clusterInfo = null, outboundTop = 
       }
     }
 
-    // Draw the “You” dot last so it sits on top
     ctx.fillStyle = "#ff0066";
     ctx.beginPath();
     ctx.arc(ux, uy, r, 0, Math.PI * 2);
     ctx.fill();
 
-    // outline for contrast
     ctx.strokeStyle = "#ffffff";
     ctx.lineWidth = 2;
     ctx.stroke();
@@ -809,6 +1008,8 @@ function drawChart(canvas, points, userPoint, clusterInfo = null, outboundTop = 
     );
   }
 }
+
+/* ---------- Settings ---------- */
 
 async function loadSettingsIntoDashboard() {
   const defaults = { useApis: true, showRefs: true, maxRefs: 10 };
@@ -836,7 +1037,6 @@ function hookSettingsSave() {
   maxRefs.addEventListener("change", save);
 }
 
-// button logic for reseeding
 document.getElementById("btnReseedDb")?.addEventListener("click", async () => {
   const btn = document.getElementById("btnReseedDb");
   try {
@@ -844,7 +1044,7 @@ document.getElementById("btnReseedDb")?.addEventListener("click", async () => {
     await updateDbStatus("Reseeding…");
     const inserted = await forceReseedDb();
     await updateDbStatus(`Reseed complete. Loaded ${inserted} rows`);
-    await loadLastResults(); // redraw chart anchors immediately
+    await loadLastResults();
   } catch (e) {
     await updateDbStatus(`Reseed failed: ${String(e)}`);
   } finally {
@@ -890,10 +1090,9 @@ document.getElementById("btnFetchMbfc")?.addEventListener("click", async () => {
     btn.disabled = false;
   }
 });
-// Show DB count on load
+
 updateDbStatus();
 
-// helper function that allows userpoint to be associated with a bucket. if political or not, it will be sorted as it is displayed
 function bucketFromX(x) {
   if (!Number.isFinite(x)) return "unknown";
   if (x <= -1.5) return "left";
@@ -915,23 +1114,439 @@ function prettyBucket(b) {
   return map[b] || "Unknown";
 }
 
+function extractWhyLine(prefixes, why = []) {
+  return (
+    why.find((line) => prefixes.some((prefix) => line.startsWith(prefix))) || ""
+  );
+}
+function formatSigned(value, digits = 2) {
+  const n = Number(value || 0);
+  return `${n >= 0 ? "+" : ""}${n.toFixed(digits)}`;
+}
+
+function explainPlacementDriver(xModel = {}) {
+  const parts = [
+    {
+      key: "sourcePriorX",
+      label: "Database starting point",
+      value: Math.abs(Number(xModel.sourcePriorX || 0)),
+    },
+    {
+      key: "neighborhoodShift",
+      label: "Linked-source pull",
+      value: Math.abs(Number(xModel.neighborhoodShift || 0)),
+    },
+    {
+      key: "articleShiftTotal",
+      label: "Article wording shift",
+      value: Math.abs(Number(xModel.articleShiftTotal || 0)),
+    },
+    {
+      key: "neighborhoodAgreementShift",
+      label: "Agreement adjustment",
+      value: Math.abs(Number(xModel.neighborhoodAgreementShift || 0)),
+    },
+    {
+      key: "outletPriorAdjustment",
+      label: "Tie-break adjustment",
+      value: Math.abs(Number(xModel.outletPriorAdjustment || 0)),
+    },
+  ].sort((a, b) => b.value - a.value);
+
+  return parts[0]?.value > 0 ? parts[0].label : "No strong placement driver";
+}
+
+
+function summarizeWhyForDashboard(data) {
+  const why = Array.isArray(data.why) ? data.why : [];
+  const used =
+    data.linkReview?.used || data.weightedNeighborhood?.usedDetails || [];
+  const ignored =
+    data.linkReview?.ignored || data.weightedNeighborhood?.ignoredDetails || [];
+
+  const xModel = data.xModel || {};
+  const sourceStart = Number(
+    xModel.sourcePriorX ?? (typeof data.x === "number" ? data.x : 0),
+  );
+  const sourceStartLabel = formatPlacementLabel(bucketFromX(sourceStart));
+
+  const neighborhoodX = Number(
+    xModel.neighborhoodX ?? data.weightedNeighborhood?.avgX ?? 0,
+  );
+  const pullLabel = formatPlacementLabel(bucketFromX(neighborhoodX));
+
+  const finalX = Number(
+    xModel.finalArticleX ?? data.articleX ?? data.x ?? 0,
+  );
+  const finalLabel = formatPlacementLabel(bucketFromX(finalX));
+
+  const semanticShift = Number(
+    xModel.semanticShift ?? data.articleShift?.semanticShift ?? 0,
+  );
+  const framingShift = Number(
+    xModel.framingShift ?? data.articleShift?.framingShift ?? 0,
+  );
+  const languageShift = Number(
+    xModel.languageShift ?? data.articleShift?.languageShift ?? 0,
+  );
+
+  const reliabilityLine =
+    extractWhyLine(["Y baseline", "Reliability calculation"], why) || "";
+
+  return {
+    start: `Database starting point: ${sourceStartLabel} (${sourceStart.toFixed(2)}).`,
+
+    neighborhood: used.length
+      ? `${used.length} linked sources contributed. Their combined pull was ${pullLabel} (${neighborhoodX.toFixed(2)}).`
+      : "No rated linked-source pattern was available.",
+
+    articleShift: `Topic cues=${formatSigned(semanticShift)}, story angle=${formatSigned(framingShift)}, tone and wording=${formatSigned(languageShift)}.`,
+
+    reliability: reliabilityLine
+      ? simplifyWhyLine(reliabilityLine)
+      : "Reliability score starts with the source's database baseline, then adjusts using sourcing quality and article-level reporting signals.",
+
+    filtered: ignored.length
+      ? `${ignored.length} links were ignored because they were same-site, same-family, social, login, support, or other non-editorial links.`
+      : "No links were filtered out.",
+
+    driver: `Main placement driver: ${explainPlacementDriver(xModel)}.`,
+    final: `Final placement: ${finalLabel} (${finalX.toFixed(2)}).`,
+  };
+}
+
+function renderWhySummary(data) {
+  const whySummary = document.getElementById("whySummary");
+  if (!whySummary) return;
+
+  const summary = summarizeWhyForDashboard(data);
+
+  whySummary.innerHTML = `
+    <div class="summaryRow">
+      <span class="summaryLabel">Database starting point</span>
+      <span class="summaryValue">${summary.start}</span>
+    </div>
+    <div class="summaryRow">
+      <span class="summaryLabel">Linked-source pull</span>
+      <span class="summaryValue">${summary.neighborhood}</span>
+    </div>
+    <div class="summaryRow">
+      <span class="summaryLabel">Article wording shift</span>
+      <span class="summaryValue">${summary.articleShift}</span>
+    </div>
+    <div class="summaryRow">
+      <span class="summaryLabel">Main placement driver</span>
+      <span class="summaryValue">${summary.driver}</span>
+    </div>
+    <div class="summaryRow">
+      <span class="summaryLabel">Final placement</span>
+      <span class="summaryValue">${summary.final}</span>
+    </div>
+    <div class="summaryRow">
+      <span class="summaryLabel">Reliability explanation</span>
+      <span class="summaryValue">${summary.reliability}</span>
+    </div>
+    <div class="summaryRow">
+      <span class="summaryLabel">Ignored links</span>
+      <span class="summaryValue">${summary.filtered}</span>
+    </div>
+  `;
+}
+
+function summarizeReliabilityModel(data) {
+  const yModel = data.yModel || {};
+  const reasons = Array.isArray(yModel.reliabilityReasons)
+    ? yModel.reliabilityReasons
+    : [];
+
+  const positive = reasons.filter((line) => String(line).startsWith("+"));
+  const negative = reasons.filter((line) => String(line).startsWith("-"));
+
+  return {
+    baseline:
+      typeof yModel.sourceBaselineY === "number"
+        ? `${Math.round(yModel.sourceBaselineY)} / 64`
+        : "Not available",
+    articleScore:
+      typeof yModel.articleReliabilityScore === "number"
+        ? `${Math.round(yModel.articleReliabilityScore)} / 64`
+        : "Not available",
+    blend: yModel.usedSourceBaselineBlend || "60/40",
+    finalY:
+      typeof yModel.finalY === "number"
+        ? `${Math.round(yModel.finalY)} / 64`
+        : typeof data.y === "number"
+          ? `${Math.round(data.y)} / 64`
+          : "Not available",
+    overall:
+      typeof yModel.overallScore100 === "number"
+        ? `${Math.round(yModel.overallScore100)} / 100`
+        : typeof data.score === "number"
+          ? `${Math.round(data.score)} / 100`
+          : "Not available",
+    positive,
+    negative,
+  };
+}
+
+function renderReliabilitySummary(data) {
+  const el = document.getElementById("dashBreakdown");
+  if (!el) return;
+
+  const ySummary = summarizeReliabilityModel(data);
+  const placement = formatPlacementLabel(data.bucket);
+  const placementValue =
+    typeof data.articleX === "number"
+      ? data.articleX.toFixed(2)
+      : typeof data.x === "number"
+        ? data.x.toFixed(2)
+        : "Not available";
+
+  const positiveReasons = ySummary.positive.length
+    ? ySummary.positive.slice(0, 4)
+    : ["No strong positive reliability signals were recorded."];
+
+  const negativeReasons = ySummary.negative.length
+    ? ySummary.negative.slice(0, 4)
+    : ["No strong reliability penalties were recorded."];
+
+  el.innerHTML = `
+    <li><strong>Overall score:</strong> ${ySummary.overall}</li>
+    <li><strong>Political placement:</strong> ${placement}</li>
+    <li><strong>Placement value:</strong> ${placementValue}</li>
+    <li><strong>Source reliability baseline:</strong> ${ySummary.baseline}</li>
+    <li><strong>Article evidence score:</strong> ${ySummary.articleScore}</li>
+    <li><strong>Blend used:</strong> ${ySummary.blend} (source baseline / article evidence)</li>
+    <li><strong>Final reliability score:</strong> ${ySummary.finalY}</li>
+    <li><strong>Main positive y-signals:</strong> ${positiveReasons.join("; ")}</li>
+    <li><strong>Main negative y-signals:</strong> ${negativeReasons.join("; ")}</li>
+  `;
+}
+
+function formatArticleDate(value) {
+  if (!value) return "Not found";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleDateString();
+}
+
+function yesNoUnknown(value) {
+  if (value === true) return "Yes";
+  if (value === false) return "No";
+  return "Unknown";
+}
+
+function renderArticleDetails(data) {
+  const sig = document.getElementById("dashSignals");
+  if (!sig) return;
+
+  const title = data.title || data.articleTitle || "Not found";
+
+  const source = data.domain || "Unknown";
+
+  const author = data.author || "Not found";
+
+  const publishDate = formatArticleDate(
+    data.date || data.publishDate || data.publishedAt,
+  );
+
+  const publisher = data.publisher || "Not found";
+
+  const pageType = data.pageType || "General article";
+
+  const secureConnection = data.url
+    ? yesNoUnknown(String(data.url).startsWith("https://"))
+    : "Unknown";
+
+  const doi = data.doi || "None found";
+
+  const citationCount =
+    typeof data.citationCount === "number"
+      ? String(data.citationCount)
+      : "Not available";
+
+  sig.innerHTML = `
+    <li><strong>Title:</strong> ${title}</li>
+    <li><strong>Source:</strong> ${source}</li>
+    <li><strong>Author:</strong> ${author}</li>
+    <li><strong>Publish date:</strong> ${publishDate}</li>
+    <li><strong>Publisher:</strong> ${publisher}</li>
+    <li><strong>Page type:</strong> ${pageType}</li>
+    <li><strong>Secure connection:</strong> ${secureConnection}</li>
+    <li><strong>DOI:</strong> ${doi}</li>
+    <li><strong>Citation count:</strong> ${citationCount}</li>
+  `;
+}
+
+function formatPlacementLabel(bucket) {
+  switch (String(bucket || "").toLowerCase()) {
+    case "left":
+      return "Left";
+    case "lean_left":
+      return "Lean Left";
+    case "center":
+      return "Center";
+    case "lean_right":
+      return "Lean Right";
+    case "right":
+      return "Right";
+    default:
+      return "Unknown";
+  }
+}
+
+function formatConfidenceLabel(confidence) {
+  const label = String(confidence?.label || "").toLowerCase();
+  if (!label) return "Not available";
+  if (label === "high") return "High";
+  if (label === "medium") return "Medium";
+  if (label === "low") return "Low";
+  return label;
+}
+
+function renderScoreBreakdown(data) {
+  // Keep this function name so the rest of the dashboard still works.
+  // The content focuses on explaining the y-axis in plain language.
+  renderReliabilitySummary(data);
+}
+
+function friendlyLinkType(type) {
+  switch (String(type || "").toLowerCase()) {
+    case "editorial_or_institutional":
+      return "Editorial / institutional";
+    case "low_value_reference":
+      return "Low-value reference";
+    case "non_editorial":
+      return "Non-editorial";
+    case "self_or_same_family":
+      return "Same site / family";
+    case "invalid":
+      return "Invalid link";
+    default:
+      return type || "Unknown";
+  }
+}
+
+function friendlyIgnoredReason(reason) {
+  switch (String(reason || "").toLowerCase()) {
+    case "self_or_same_family":
+      return "Same site or same media family";
+    case "non_editorial":
+      return "Non-editorial link";
+    case "invalid":
+      return "Invalid link";
+    default:
+      return reason || "Ignored";
+  }
+}
+
+function safeLinkFromDomain(domain) {
+  const d = String(domain || "").trim();
+  if (!d || d === "Unknown" || d === "[invalid]") return "";
+  return `https://${d}`;
+}
+
+function renderDomainLink(domain) {
+  const href = safeLinkFromDomain(domain);
+  const label = domain || "Unknown";
+
+  if (!href) return label;
+
+  return `
+    <a href="${href}" target="_blank" rel="noreferrer" title="${href}">
+      ${label}
+    </a>
+  `;
+}
+
+function renderLinkedSources(data) {
+  const usedEl = document.getElementById("dashRefsUsed");
+  const ignoredEl = document.getElementById("dashRefsIgnored");
+  if (!usedEl || !ignoredEl) return;
+
+  // Only show sources here that actually influenced placement.
+  const used = (
+    data.linkReview?.used || data.weightedNeighborhood?.usedDetails || []
+  ).filter((item) => item.contributed !== false);
+
+  const ignored =
+    data.linkReview?.ignored || data.weightedNeighborhood?.ignoredDetails || [];
+
+  if (!used.length) {
+    usedEl.innerHTML = `<div class="sourceEmpty">No linked sources contributed to placement for this page.</div>`;
+  } else {
+    usedEl.innerHTML = `
+      <div class="sourceRow sourceHead">
+        <div>Source</div>
+        <div>Placement</div>
+        <div>X value</div>
+        <div>Weight</div>
+        <div>Type / count</div>
+      </div>
+      ${used
+        .map(
+          (item) => `
+            <div class="sourceRow">
+              <div>${renderDomainLink(item.domain)}</div>
+              <div>${formatPlacementLabel(item.bucket)}</div>
+              <div>${Number(item.x || 0).toFixed(2)}</div>
+              <div>${Number(item.weight || 0).toFixed(2)}</div>
+              <div>${friendlyLinkType(item.type)}${item.occurrences > 1 ? ` (${item.occurrences}x)` : ""}</div>
+            </div>
+          `,
+        )
+        .join("")}
+    `;
+  }
+
+  if (!ignored.length) {
+    ignoredEl.innerHTML = `<div class="sourceEmpty">No ignored links were recorded for this page.</div>`;
+  } else {
+    ignoredEl.innerHTML = `
+      <div class="sourceRow sourceHead" style="grid-template-columns: 1.5fr 1.5fr;">
+        <div>Source</div>
+        <div>Reason ignored</div>
+      </div>
+      ${ignored
+        .map(
+          (item) => `
+            <div class="sourceRow" style="grid-template-columns: 1.5fr 1.5fr;">
+              <div>${renderDomainLink(item.domain)}</div>
+              <div>${friendlyIgnoredReason(item.reason)}${item.occurrences > 1 ? ` (${item.occurrences}x)` : ""}</div>
+            </div>
+          `,
+        )
+        .join("")}
+    `;
+  }
+}
+
+function hookSourceDetailsToggle() {
+  const btn = document.getElementById("toggleSourceDetails");
+  const panel = document.getElementById("sourceDetailsPanel");
+  if (!btn || !panel) return;
+
+  btn.addEventListener("click", () => {
+    const isHidden = panel.classList.contains("hidden");
+    panel.classList.toggle("hidden", !isHidden);
+    btn.textContent = isHidden ? "Hide source details" : "Show source details";
+  });
+}
+
+/* ---------- Rendering Results ---------- */
+
 async function loadLastResults() {
-  //dashboard testing
-  // console.log("[Dashboard] loading lastAnalysis…");
-  // 1) Always load/draw seeded anchors
   const canvas = document.getElementById("biasChart");
   if (!canvas) return;
+
   const seeds = await getAllSeedPoints();
   const seedsByDomain = {};
   for (const s of seeds) seedsByDomain[s.domain] = s;
 
   const clusterInfo = await computeClustersFromLog(seedsByDomain);
 
-  // Draw anchors first (no user dot yet)
   drawChart(canvas, seeds, null, clusterInfo);
 
-  // 2) Read lastAnalysis
-  // Previously had save issue, this merges both versions for full data
   const saved = await chrome.storage.local.get({
     lastAnalysis: null,
     lastPopupAnalysis: null,
@@ -940,7 +1555,6 @@ async function loadLastResults() {
   const base = saved.lastAnalysis || {};
   const popup = saved.lastPopupAnalysis || {};
 
-  // Merge so existing UI continues to work
   const data = { ...popup, ...base };
 
   const outboundLinks = data.outboundLinks || data.refs || [];
@@ -956,67 +1570,43 @@ async function loadLastResults() {
 
   const outboundTop = outboundDomains.slice(0, 10);
 
-  // ensure url is present
   data.url = data.url || popup.url || base.url || "";
-  // please work
-  //console.log("[Dashboard] lastAnalysis:", data);
-  // console.log("[Dashboard] lastAnalysis snapshot:", {
-  //   url: data?.url,
-  //   domain: data?.domain,
-  //   bucket: data?.bucket,
-  //   x: data?.x,
-  //   y: data?.y,
-  // });
-
-  // If no analysis yet, still show how many anchors we have
 
   if (!data.url) {
-    document.getElementById("chartSummary").textContent =
-      `Loaded ${seeds.length} seeded domains. Run Analyze Page to place your article.`;
+    document.getElementById("chartSummary").innerHTML = `
+      <div class="summaryRow">
+        <span class="summaryLabel">Current source</span>
+        <span class="summaryValue">No page analyzed yet.</span>
+      </div>
+      <div class="summaryRow">
+        <span class="summaryLabel">Political placement</span>
+        <span class="summaryValue">Run Analyze Page to place this article.</span>
+      </div>
+      <div class="summaryRow">
+        <span class="summaryLabel">Reliability score</span>
+        <span class="summaryValue">--</span>
+      </div>
+      <div class="summaryRow">
+        <span class="summaryLabel">Rated linked sources shown</span>
+        <span class="summaryValue">0</span>
+      </div>
+      <div class="summaryRow">
+        <span class="summaryLabel">Seeded comparison sources</span>
+        <span class="summaryValue">${seeds.length}</span>
+      </div>
+`;
     return;
   }
-  // if (!data) {
-  //   document.getElementById("chartSummary").textContent =
-  //     `Loaded ${seeds.length} seeded domains. Run Analyze Page to place your article.`;
-  //   return;
-  // }
 
-  // 3) Populate the existing dashboard fields
   document.getElementById("dashScore").textContent = String(data.score ?? "--");
   document.getElementById("dashUrl").textContent = data.url || "Unknown URL";
   document.getElementById("dashAdvisory").textContent =
     data.advisory || "Neutral";
 
-  const sig = document.getElementById("dashSignals");
-  sig.innerHTML = "";
-  (data.signals || []).forEach((line) => {
-    const li = document.createElement("li");
-    li.textContent = line;
-    sig.appendChild(li);
-  });
-
-  const bd = document.getElementById("dashBreakdown");
-  bd.innerHTML = "";
-  (data.breakdown || []).forEach((line) => {
-    const li = document.createElement("li");
-    li.textContent = line;
-    bd.appendChild(li);
-  });
-
-  const refs = document.getElementById("dashRefs");
-  refs.innerHTML = "";
-  (data.refs || []).forEach((href) => {
-    const li = document.createElement("li");
-    const a = document.createElement("a");
-    a.href = href;
-    a.target = "_blank";
-    a.rel = "noreferrer";
-    a.textContent = href;
-    li.appendChild(a);
-    refs.appendChild(li);
-  });
-
-  // 4) Draw user point (force numeric in case x/y were stored as strings)
+  renderArticleDetails(data);
+  renderScoreBreakdown(data);
+  renderLinkedSources(data);
+  
 
   const xBucket = Number(data.x);
   const xArticle = Number(data.articleX);
@@ -1040,19 +1630,12 @@ async function loadLastResults() {
         : 0;
 
   let y = Number(data.y);
-
-  // fallback y if missing (so “You” still shows)
   if (!Number.isFinite(y) && Number.isFinite(dbY)) y = dbY;
   if (!Number.isFinite(y)) y = 32;
-  // if (!Number.isFinite(x)) x = 0;
 
   const userPoint = { x, y };
-  // const userPoint = Number.isFinite(x) ? { x, y } : { x: 0, y };
-  //const userPoint = Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
-
   const derivedBucket = bucketFromX(x);
 
-  // if domain baseline exists, use it; otherwise use derived bucket from userPoint
   const bucketLabel =
     data.bucket && data.bucket !== "unknown"
       ? prettyBucket(data.bucket)
@@ -1060,37 +1643,44 @@ async function loadLastResults() {
 
   drawChart(canvas, seeds, userPoint, clusterInfo, outboundTop, seedsByDomain);
 
-  // Political category = bucket
-  // Anchor = datapoints
-  // Political Category: ${data.bucket || "unknown"}
- 
-  document.getElementById("chartSummary").textContent =
-    `Current domain: ${data.domain || "unknown"} | Political Category: ${bucketLabel} | X-axis: ${x} | Y-axis: ${y} | Baseline data points: ${seeds.length} | Clusters: ${clusterInfo.clusterCount} | Rated outbound: ${outboundTop.length}`;
-
-  const whyList = document.getElementById("whyList");
-  whyList.innerHTML = "";
-  (data.why || []).forEach((r) => {
-    const li = document.createElement("li");
-    li.textContent = r;
-    whyList.appendChild(li);
-  });
+  document.getElementById("chartSummary").innerHTML = `
+    <div class="summaryRow">
+      <span class="summaryLabel">Current source</span>
+      <span class="summaryValue">${data.domain || "Unknown"}</span>
+    </div>
+    <div class="summaryRow">
+      <span class="summaryLabel">Political placement</span>
+      <span class="summaryValue">${bucketLabel} (${x.toFixed(2)})</span>
+    </div>
+    <div class="summaryRow">
+      <span class="summaryLabel">Reliability score</span>
+      <span class="summaryValue">${Math.round(y)} / 64</span>
+    </div>
+    <div class="summaryRow">
+      <span class="summaryLabel">Rated linked sources shown</span>
+      <span class="summaryValue">${outboundTop.length}</span>
+    </div>
+    <div class="summaryRow">
+      <span class="summaryLabel">Seeded comparison sources</span>
+      <span class="summaryValue">${seeds.length}</span>
+    </div>
+`;
+  
+  renderWhySummary(data);
 }
 
+/* ---------- Startup ---------- */
 
-
-document.querySelectorAll(".sideItem").forEach((btn) => {
+document.querySelectorAll(".sideItem[data-route]").forEach((btn) => {
   btn.addEventListener("click", () => showRoute(btn.dataset.route));
 });
 
-// route from URL hash (#settings)
 const hash = (location.hash || "").replace("#", "");
 showRoute(hash === "settings" ? "settings" : "dashboard");
 
 loadSettingsIntoDashboard();
 hookSettingsSave();
 
-
-  //make sure dashboard reloads with every new search
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
   if (changes.lastAnalysis || changes.lastPopupAnalysis) {
@@ -1100,10 +1690,14 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 (async () => {
   await seedIfEmpty();
-  (async () => {
-    const saved = await chrome.storage.local.get({ mbfcApiKey: "" });
-    const keyInput = document.getElementById("mbfcApiKey");
-    if (keyInput && saved.mbfcApiKey) keyInput.value = saved.mbfcApiKey;
-  })();
+
+  const saved = await chrome.storage.local.get({ mbfcApiKey: "" });
+  const keyInput = document.getElementById("mbfcApiKey");
+  if (keyInput && saved.mbfcApiKey) keyInput.value = saved.mbfcApiKey;
+
+  await loadUiPreferences();
+  setupDragAndDrop();
+  hookLayoutControls();
+  hookSourceDetailsToggle();
   await loadLastResults();
 })();

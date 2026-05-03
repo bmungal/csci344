@@ -60,6 +60,7 @@
         <li>Estimates reliability/news value on the y-axis</li>
         <li>Shows which signals influenced the result</li>
         <li>Lets you open a dashboard for a larger visual view</li>
+        <li>Lets you generate APA and MLA citations</li>
       </ul>
 
       <h2>What the axes mean</h2>
@@ -72,69 +73,96 @@
         stronger sourcing, stronger evidence, and better support from known
         rated sources.
       </div>
+      <div class="card">
+        <strong>Overall score:</strong> The popup and dashboard also show a simpler 0–100 score for users.
+        This is a user-facing summary score. The y-axis still keeps the extension’s 0–64 reliability scale.
+      </div>
 
       <h2>Research background</h2>
-        <p>
-            SusAbility is inspired by academic work on media bias and article-level
-            analysis. Parts of the project draw on ideas from the University of
-            Pennsylvania’s Computational Social Science Lab and the Penn Media
-            Accountability Project (PennMAP).
-        </p>
-            <ul>
-                <li>
-                    <a href="https://css.seas.upenn.edu/project/penn-map/" target="_blank" rel="noreferrer">
-                    PennMAP – Penn Media Accountability Project
-                    </a>
-                </li>
-                <li>
-                    <a href="https://mediabiasdetector.seas.upenn.edu/about/" target="_blank" rel="noreferrer">
-                    Media Bias Detector – About / Methodology background
-                    </a>
-                </li>
-            </ul>
-        <p>
-        These references help explain the research direction behind article-level
-        media analysis, topic selection, framing, and political-lean measurement.
-        </p>
-        <h2>About the source database</h2>
-            <p>
-            SusAbility uses a local source baseline database to help estimate political
-            placement and reliability. The extension compares the current article and its
-            outbound links against rated source patterns, then blends that with
-            article-level signals such as semantics, framing, and rhetoric.
-            </p>
+      <p>
+        SusAbility is inspired by academic work on media bias and article-level
+        analysis. Parts of the project draw on ideas from the University of
+        Pennsylvania’s Computational Social Science Lab and the Penn Media
+        Accountability Project (PennMAP).
+      </p>
+      <ul>
+        <li>
+          <a href="https://css.seas.upenn.edu/project/penn-map/" target="_blank" rel="noreferrer">
+            PennMAP – Penn Media Accountability Project
+          </a>
+        </li>
+        <li>
+          <a href="https://mediabiasdetector.seas.upenn.edu/about/" target="_blank" rel="noreferrer">
+            Media Bias Detector – About / Methodology background
+          </a>
+        </li>
+      </ul>
+
+      <h2>About the source database</h2>
+      <p>
+        SusAbility uses a local source baseline database to help estimate political
+        placement and reliability. The extension compares the current article and its
+        outbound links against rated source patterns, then blends that with
+        article-level signals such as semantics, framing, and rhetoric.
+      </p>
+
       <h2>What the main signals mean</h2>
       <ul>
         <li><strong>Political starting point:</strong> the article’s source baseline from the local ratings database, if matched.</li>
         <li><strong>Final political placement:</strong> the final x-axis position after adjusting for linked sources, semantics, and framing.</li>
-        <li><strong>Known linked sources:</strong> outbound links that matched a rated source in the database.</li>
-        <li><strong>Unknown linked sources:</strong> outbound links that did not match a rated source.</li>
-        <li><strong>Linked source pattern:</strong> the average political lean of the article’s rated outbound links.</li>
+        <li><strong>Linked-source pattern:</strong> the overall pull from linked sources that were kept in the analysis.</li>
         <li><strong>Reliability score:</strong> article-level reliability blended with the source’s baseline reliability.</li>
+        <li><strong>Topic cues:</strong> issue-related wording that can gently shift placement.</li>
+        <li><strong>Story angle:</strong> how the article presents the issue overall.</li>
+        <li><strong>Tone and wording:</strong> emotionally loaded, subjective, or intense wording that can affect the reading of the article.</li>
       </ul>
-      
+
       <h2>How the analysis works</h2>
       <ul>
         <li>The extension first tries to match the current source to a known source in the local database.</li>
         <li>If the source is known, that gives the article a starting political and reliability baseline.</li>
         <li>The extension then reviews outbound links and compares them to other rated sources.</li>
         <li>It also checks article-level cues such as wording, issue framing, and narrative framing.</li>
-        <li>The final position is a blend of source baseline the local database, linked-source evidence, and article-level signals.</li>
+        <li>The final result is a blend of source baseline, linked-source evidence, and article-level signals.</li>
       </ul>
+
+      <h2>Popup progress steps</h2>
+      <ul>
+        <li><strong>Reading page content:</strong> pulls visible page details from the current article.</li>
+        <li><strong>Checking source database:</strong> looks for a local source baseline match.</li>
+        <li><strong>Reviewing linked sources:</strong> checks outbound links and filters out low-value or non-editorial links.</li>
+        <li><strong>Filling missing metadata:</strong> uses API fallbacks only when needed.</li>
+        <li><strong>Scoring results:</strong> combines the gathered signals into the final result.</li>
+        <li><strong>Saving results:</strong> stores the latest analysis so the popup and dashboard stay in sync.</li>
+      </ul>
+
+      <h2>Dashboard source details</h2>
+      <p>
+        The dashboard includes a <strong>Show source details</strong> button under the chart.
+        This opens two grouped lists:
+      </p>
+      <ul>
+        <li><strong>Sources that influenced placement:</strong> linked sources that contributed to the source-pattern analysis.</li>
+        <li><strong>Sources ignored:</strong> links that were found but skipped because they were same-site, same-family, social, support, login, or other non-editorial links.</li>
+      </ul>
+      <p>
+        Repeated domains are grouped together so sources like <code>doi.org</code> are not shown as several separate rows.
+      </p>
 
       <h2>Buttons</h2>
       <ul>
         <li><strong>Analyze Page:</strong> runs the current article analysis.</li>
-        <li><strong>Citation:</strong> creates a citation using article metadata.</li>
-        <li><strong>Dashboard:</strong> opens the larger chart and explanation view.</li>
-        <li><strong>Settings:</strong> opens dashboard settings such as API usage and reference display.</li>
+        <li><strong>Generate Citation:</strong> opens a separate citation view for APA and MLA output.</li>
+        <li><strong>Copy APA / Copy MLA:</strong> copies one citation format at a time.</li>
+        <li><strong>Dashboard:</strong> opens the larger dashboard view.</li>
+        <li><strong>Settings:</strong> opens dashboard settings.</li>
+        <li><strong>Help:</strong> opens this help page.</li>
       </ul>
 
       <h2>Important note</h2>
       <p>
-        SusAbility is meant to support critical reading. It does not replace
-        human judgment, and scores should be read as guidance rather than a
-        final verdict.
+        SusAbility should be used as a guide for review and comparison.
+        Scores and placements are explainable estimates, not absolute truth.
       </p>
     </div>
   </body>

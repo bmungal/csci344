@@ -2,12 +2,22 @@ function $(id) {
   return document.getElementById(id);
 }
 
-// create button variables for each button/ link
+// create button variables for each button / link
 const analyzeBtn = $("analyzeBtn");
 const citeBtn = $("citeBtn");
 const helpLink = $("helpLink");
 const statusEl = $("status");
-//const resultEl = document.getElementById("result");
+
+// popup sections
+const resultsEl = $("results");
+const citationViewEl = $("citationView");
+
+// citation view controls
+const backToResultsBtn = $("backToResultsBtn");
+const copyApaBtn = $("copyApaBtn");
+const copyMlaBtn = $("copyMlaBtn");
+const apaCitationEl = $("apaCitation");
+const mlaCitationEl = $("mlaCitation");
 
 // --- navigation ---
 const navDashboard = $("navDashboard");
@@ -18,6 +28,10 @@ const toggleUseApis = $("toggleUseApis");
 const toggleShowRefs = $("toggleShowRefs");
 const maxRefsEl = $("maxRefs");
 
+let lastGeneratedCitations = {
+  apa: "",
+  mla: "",
+};
 
 async function loadSettings() {
   const defaults = { useApis: true, showRefs: true, maxRefs: 10 };
@@ -28,22 +42,25 @@ async function loadSettings() {
   if (maxRefsEl) maxRefsEl.value = String(saved.maxRefs ?? 10);
 }
 
-// Load initial "how to" prompt on the first open of the extension
+// Load initial "how to" prompt on the first open of the extension.
 async function maybeShowOnboarding() {
   const modal = document.getElementById("onboardingModal");
   const ok = document.getElementById("onboardingOk");
   if (!modal || !ok) return;
 
-  // show once per popup open
   modal.classList.remove("hidden");
 
-  ok.addEventListener("click", () => {
-    modal.classList.add("hidden");
-  }, { once: true });
+  ok.addEventListener(
+    "click",
+    () => {
+      modal.classList.add("hidden");
+    },
+    { once: true },
+  );
 }
 
 function saveSettings() {
-  // If the settings UI isn't on this page, do nothing
+  // If the settings UI is not on this page, do nothing.
   if (!toggleUseApis || !toggleShowRefs || !maxRefsEl) return;
 
   const settings = {
@@ -54,19 +71,59 @@ function saveSettings() {
   chrome.storage.sync.set(settings);
 }
 
-// Only attach listeners if those controls exist on THIS html file
 if (toggleUseApis) toggleUseApis.addEventListener("change", saveSettings);
 if (toggleShowRefs) toggleShowRefs.addEventListener("change", saveSettings);
 if (maxRefsEl) maxRefsEl.addEventListener("change", saveSettings);
 
-// Safe to call; it checks for nulls now
 loadSettings();
 
-// function that sets the status message
+// status line helper
 function setStatus(message) {
-  statusEl.textContent = message;
+  if (statusEl) statusEl.textContent = message;
 }
 
+// show or hide the simple progress box
+function showProgress(show) {
+  const box = document.getElementById("progressBox");
+  if (!box) return;
+  box.classList.toggle("hidden", !show);
+}
+
+// clear progress state before a new run
+function resetProgress() {
+  document.querySelectorAll("#progressList li").forEach((li) => {
+    li.classList.remove("active", "done");
+  });
+}
+
+// highlight the current step and mark earlier ones as finished
+function setProgress(stepKey) {
+  const order = ["extract", "source", "links", "metadata", "score", "save"];
+  const currentIndex = order.indexOf(stepKey);
+
+  document.querySelectorAll("#progressList li").forEach((li) => {
+    const idx = order.indexOf(li.dataset.step);
+    li.classList.remove("active", "done");
+
+    if (idx < currentIndex) li.classList.add("done");
+    else if (idx === currentIndex) li.classList.add("active");
+  });
+}
+
+// switch back to the normal analysis summary
+function showResultsView() {
+  if (resultsEl) resultsEl.classList.remove("hidden");
+  if (citationViewEl) citationViewEl.classList.add("hidden");
+}
+
+// switch to the citation view only
+function showCitationView() {
+  if (resultsEl) resultsEl.classList.add("hidden");
+  if (citationViewEl) citationViewEl.classList.remove("hidden");
+}
+
+// popup summary uses the official score and advisory from the service worker
+// so the popup and dashboard stay in sync.
 function summarizeAnalysisForUser(data) {
   const breakdown = [];
 
@@ -75,77 +132,42 @@ function summarizeAnalysisForUser(data) {
     ? Number(data.articleX)
     : Number(data.x);
 
-  const outboundCounts = data.outboundSkew?.counts || {};
-  const ratedOutbound =
-    (outboundCounts.left || 0) +
-    (outboundCounts.lean_left || 0) +
-    (outboundCounts.center || 0) +
-    (outboundCounts.lean_right || 0) +
-    (outboundCounts.right || 0);
+  const weightedNeighborhood = data.weightedNeighborhood || {};
+  const linkReviewUsed = data.linkReview?.used || weightedNeighborhood.usedDetails || [];
+  const linkReviewIgnored = data.linkReview?.ignored || weightedNeighborhood.ignoredDetails || [];
 
-  const unknownOutbound = outboundCounts.unknown || 0;
-  const totalOutbound = ratedOutbound + unknownOutbound;
-
-  let score = 50;
+  const usedCount = linkReviewUsed.filter((item) => item.contributed !== false).length;
+  const ignoredCount = linkReviewIgnored.length;
 
   if (Number.isFinite(reliability)) {
-    score += (reliability - 32) * 0.8;
-    breakdown.push(
-      `Reliability contributed ${Math.round((reliability - 32) * 0.8)} points`,
-    );
+    breakdown.push(`Reliability score: ${Math.round(reliability)} / 64`);
   }
 
-  if (ratedOutbound >= 5) {
-    score += 10;
-    breakdown.push("+10 strong linked-source evidence");
-  } else if (ratedOutbound >= 2) {
-    score += 5;
-    breakdown.push("+5 some linked-source evidence");
-  } else {
-    breakdown.push("+0 limited linked-source evidence");
+  if (Number.isFinite(politicalX)) {
+    breakdown.push(`Political placement value: ${politicalX.toFixed(2)}`);
   }
 
-  if (totalOutbound >= 5 && unknownOutbound / totalOutbound >= 0.7) {
-    score -= 8;
-    breakdown.push("-8 most linked sources are unknown/unrated");
-  } else if (totalOutbound >= 5 && unknownOutbound / totalOutbound >= 0.5) {
-    score -= 4;
-    breakdown.push("-4 many linked sources are unknown/unrated");
+  breakdown.push(`${usedCount} linked sources contributed to placement.`);
+  breakdown.push(`${ignoredCount} links were ignored during source review.`);
+
+  if (data.pageType) {
+    breakdown.push(`Page type: ${data.pageType}`);
   }
-
-  if (typeof data.sourceBaselineY === "number") {
-    score += 6;
-    breakdown.push("+6 matched a known source baseline");
-  }
-
-  if (
-    data.pageType &&
-    String(data.pageType).toLowerCase().includes("opinion")
-  ) {
-    score -= 6;
-    breakdown.push("-6 opinion-style content");
-  }
-
-  score = Math.max(0, Math.min(100, Math.round(score)));
-
-  let advisory = "Mixed signals";
-  if (score >= 75) advisory = "Higher confidence";
-  else if (score >= 60) advisory = "Moderate confidence";
-  else if (score >= 40) advisory = "Use caution";
-  else advisory = "Low confidence";
 
   return {
-    score,
-    advisory,
+    score:
+      typeof data.score === "number"
+        ? Math.round(data.score)
+        : 50,
+    advisory: data.advisory || "Mixed signals",
     breakdown,
     politicalX,
     reliability,
   };
 }
 
-// renderResults
+// render the main analysis view
 function renderResults(scoreObj, links) {
-  const resultsEl = document.getElementById("results");
   const scoreEl = document.getElementById("scoreValue");
   const breakdownEl = document.getElementById("breakdownList");
   const refsEl = document.getElementById("refsList");
@@ -155,7 +177,7 @@ function renderResults(scoreObj, links) {
     return;
   }
 
-  resultsEl.classList.remove("hidden");
+  showResultsView();
 
   scoreEl.textContent = String(scoreObj.score);
 
@@ -171,15 +193,15 @@ function renderResults(scoreObj, links) {
     const li = document.createElement("li");
     const a = document.createElement("a");
     a.href = href;
-    //a.textContent = href;
-    //vertical scroll for popup
+
     let label = href;
     try {
       const u = new URL(href);
       label = u.hostname.replace(/^www\./, "");
     } catch {}
+
     a.textContent = label;
-    a.title = href; // full URL on hover
+    a.title = href;
     a.target = "_blank";
     a.rel = "noreferrer";
     li.appendChild(a);
@@ -187,7 +209,7 @@ function renderResults(scoreObj, links) {
   }
 }
 
-// renderSignals
+// render the signal rows shown in the popup
 function renderSignals(data) {
   const signalsList = document.getElementById("signalsList");
   if (!signalsList) return;
@@ -211,31 +233,7 @@ function renderSignals(data) {
     [
       "Reliability score",
       Number.isFinite(Number(data.y))
-        ? String(Math.round(Number(data.y)))
-        : "Not available",
-    ],
-    [
-      "Known linked sources",
-      data.outboundSkew
-        ? String(
-            (data.outboundSkew.counts.left || 0) +
-              (data.outboundSkew.counts.lean_left || 0) +
-              (data.outboundSkew.counts.center || 0) +
-              (data.outboundSkew.counts.lean_right || 0) +
-              (data.outboundSkew.counts.right || 0),
-          )
-        : "Not available",
-    ],
-    [
-      "Unknown linked sources",
-      data.outboundSkew
-        ? String(data.outboundSkew.counts.unknown || 0)
-        : "Not available",
-    ],
-    [
-      "Linked source pattern",
-      data.outboundSkew && Number.isFinite(Number(data.outboundSkew.avgX))
-        ? Number(data.outboundSkew.avgX).toFixed(2)
+        ? `${Math.round(Number(data.y))} / 64`
         : "Not available",
     ],
     ["DOI", data.doi || "None"],
@@ -262,88 +260,6 @@ function renderSignals(data) {
   }
 }
 
-// //Event Listeners
-
-// // Action when btn Analyze page is clicked
-// // await chrome.tabs.query returns the tab that is currently
-// // selected and only looks on current browser window
-// // sends message to listener -> display error or data found
-if (analyzeBtn) {
-  analyzeBtn.addEventListener("click", async () => {
-    setStatus("Extracting page signals...");
-
-    const resultsEl = document.getElementById("results");
-    if (resultsEl) resultsEl.classList.add("hidden");
-
-    const settings = await chrome.storage.sync.get({
-      useApis: true,
-      showRefs: true,
-      maxRefs: 10,
-    });
-
-    chrome.runtime.sendMessage({ type: "API_CALLS", settings }, (resp) => {
-      if (chrome.runtime.lastError) {
-        setStatus("Service worker error: " + chrome.runtime.lastError.message);
-        return;
-      }
-      if (!resp?.ok) {
-        setStatus("Analysis failed: " + (resp?.error || "Unknown error"));
-        return;
-      }
-
-      const data = resp.data || {};
-
-      // shows what the error payload is
-      if (data.error) {
-        setStatus("Content script error: " + data.error);
-        return;
-      }
-
-      renderSignals(data);
-
-      const outbound = Array.isArray(data.outboundLinks)
-        ? data.outboundLinks
-        : [];
-      const scoreObj = summarizeAnalysisForUser(data);
-
-      const finalRefs = settings.showRefs
-        ? outbound.slice(0, settings.maxRefs)
-        : [];
-
-      setStatus("Page Analysis Complete.");
-      if (resultsEl) resultsEl.classList.remove("hidden");
-
-      renderResults(scoreObj, finalRefs);
-
-      // END OF ANALYZE CALLBACK — put extra settings
-      // (example: save, navigate, update dashboard badge, etc.) ??
-
-      const signalLines = Array.from(
-        document.querySelectorAll("#signalsList li"),
-      ).map((li) => li.textContent);
-
-     chrome.storage.local.set({
-       lastPopupAnalysis: {
-         url: data.url || "",
-         domain: data.domain || "",
-         bucket: data.bucket || "unknown",
-         x: data.x,
-         articleX: data.articleX,
-         y: data.y,
-         outboundLinks: outbound,
-         score: scoreObj.score,
-         advisory: scoreObj.advisory,
-         signals: signalLines,
-         breakdown: scoreObj.breakdown,
-         refs: finalRefs,
-       },
-     });
-    });
-  });
-}
-
-// Action when btn Generate citation is clicked
-// uses stored signals to create an apa/ mla citation, copies to clipboard
 function formatCitationAPA(data) {
   const author = data.author || "Unknown author";
   const date = data.date ? `(${data.date}).` : "(n.d.).";
@@ -368,6 +284,138 @@ function formatCitationMLA(data) {
     .trim();
 }
 
+// Fill the citation view with the current page's citation formats.
+function renderCitationView(apa, mla) {
+  lastGeneratedCitations = { apa, mla };
+
+  if (apaCitationEl) apaCitationEl.textContent = apa;
+  if (mlaCitationEl) mlaCitationEl.textContent = mla;
+
+  showCitationView();
+}
+
+async function copyTextWithStatus(text, label) {
+  try {
+    await navigator.clipboard.writeText(text);
+    setStatus(`${label} copied to clipboard.`);
+  } catch {
+    setStatus(`Could not copy ${label.toLowerCase()} automatically.`);
+  }
+}
+
+if (analyzeBtn) {
+  analyzeBtn.addEventListener("click", async () => {
+    setStatus("Starting analysis...");
+    showProgress(true);
+    resetProgress();
+    setProgress("extract");
+
+    if (resultsEl) resultsEl.classList.add("hidden");
+    if (citationViewEl) citationViewEl.classList.add("hidden");
+
+    const settings = await chrome.storage.sync.get({
+      useApis: true,
+      showRefs: true,
+      maxRefs: 10,
+    });
+
+    setStatus("Reading page content...");
+
+    // These timed steps make the popup feel clearer while the background work runs.
+    const progressTimers = [
+      setTimeout(() => {
+        setProgress("source");
+        setStatus("Checking source database...");
+      }, 200),
+      setTimeout(() => {
+        setProgress("links");
+        setStatus("Reviewing linked sources...");
+      }, 450),
+      setTimeout(() => {
+        setProgress("metadata");
+        setStatus(
+          settings.useApis
+            ? "Filling missing metadata..."
+            : "Skipping metadata fallback...",
+        );
+      }, 700),
+      setTimeout(() => {
+        setProgress("score");
+        setStatus("Scoring results...");
+      }, 950),
+    ];
+
+    chrome.runtime.sendMessage({ type: "API_CALLS", settings }, (resp) => {
+      progressTimers.forEach((id) => clearTimeout(id));
+
+      if (chrome.runtime.lastError) {
+        showProgress(false);
+        setStatus("Service worker error: " + chrome.runtime.lastError.message);
+        return;
+      }
+      if (!resp?.ok) {
+        showProgress(false);
+        setStatus("Analysis failed: " + (resp?.error || "Unknown error"));
+        return;
+      }
+
+      const data = resp.data || {};
+
+      if (data.error) {
+        showProgress(false);
+        setStatus("Content script error: " + data.error);
+        return;
+      }
+
+      renderSignals(data);
+
+      const outbound = Array.isArray(data.outboundLinks)
+        ? data.outboundLinks
+        : [];
+      const scoreObj = summarizeAnalysisForUser(data);
+
+      const finalRefs = settings.showRefs
+        ? outbound.slice(0, settings.maxRefs)
+        : [];
+
+      setProgress("save");
+      setStatus("Saving results...");
+
+      renderResults(scoreObj, finalRefs);
+
+      const signalLines = Array.from(
+        document.querySelectorAll("#signalsList li"),
+      ).map((li) => li.textContent);
+
+      chrome.storage.local.set(
+        {
+          lastPopupAnalysis: {
+            url: data.url || "",
+            domain: data.domain || "",
+            bucket: data.bucket || "unknown",
+            x: data.x,
+            articleX: data.articleX,
+            y: data.y,
+            outboundLinks: outbound,
+            score: scoreObj.score,
+            advisory: scoreObj.advisory,
+            signals: signalLines,
+            breakdown: scoreObj.breakdown,
+            refs: finalRefs,
+          },
+        },
+        () => {
+          document.querySelectorAll("#progressList li").forEach((li) =>
+            li.classList.add("done"),
+          );
+          setStatus("Page analysis complete.");
+        },
+      );
+    });
+  });
+}
+
+// Create a separate citation view instead of mixing citation text into the breakdown list.
 if (citeBtn) {
   citeBtn.addEventListener("click", async () => {
     const saved = await chrome.storage.local.get({
@@ -388,33 +436,32 @@ if (citeBtn) {
     const apa = formatCitationAPA(data);
     const mla = formatCitationMLA(data);
 
-    const citationText = `APA:\n${apa}\n\nMLA:\n${mla}`;
-
-    try {
-      await navigator.clipboard.writeText(citationText);
-      setStatus("Citation copied to clipboard.");
-    } catch {
-      setStatus("Could not copy citation automatically.");
-    }
-
-    const resultsEl = document.getElementById("results");
-    if (resultsEl) resultsEl.classList.remove("hidden");
-
-    const breakdownEl = document.getElementById("breakdownList");
-    if (breakdownEl) {
-      breakdownEl.innerHTML = "";
-      ["Citation formats generated:", `APA: ${apa}`, `MLA: ${mla}`].forEach(
-        (line) => {
-          const li = document.createElement("li");
-          li.textContent = line;
-          breakdownEl.appendChild(li);
-        },
-      );
-    }
+    renderCitationView(apa, mla);
+    setStatus("Citation formats are ready.");
   });
 }
 
-// Action when help link is clicked
+if (copyApaBtn) {
+  copyApaBtn.addEventListener("click", async () => {
+    if (!lastGeneratedCitations.apa) return;
+    await copyTextWithStatus(lastGeneratedCitations.apa, "APA citation");
+  });
+}
+
+if (copyMlaBtn) {
+  copyMlaBtn.addEventListener("click", async () => {
+    if (!lastGeneratedCitations.mla) return;
+    await copyTextWithStatus(lastGeneratedCitations.mla, "MLA citation");
+  });
+}
+
+if (backToResultsBtn) {
+  backToResultsBtn.addEventListener("click", () => {
+    showResultsView();
+    setStatus("Back to analysis summary.");
+  });
+}
+
 if (helpLink) {
   helpLink.addEventListener("click", () => {
     chrome.tabs.create({
@@ -423,7 +470,6 @@ if (helpLink) {
   });
 }
 
-// Action to open dashboard
 if (navDashboard) {
   navDashboard.addEventListener("click", () => {
     chrome.tabs.create({
@@ -432,7 +478,6 @@ if (navDashboard) {
   });
 }
 
-// Action to open Settings in dashboard
 if (navSettings) {
   navSettings.addEventListener("click", () => {
     chrome.tabs.create({
@@ -441,10 +486,6 @@ if (navSettings) {
   });
 }
 
-// //
-
-// start up prompt on launch 
 document.addEventListener("DOMContentLoaded", () => {
-  maybeShowOnboarding(); // show immediately on open
+  maybeShowOnboarding();
 });
-

@@ -1,10 +1,10 @@
 <!-- based off of malwarebytes -->
 
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SusAbility Dashboard</title>
   <link rel="stylesheet" href="dashboard.css" />
 </head>
@@ -13,136 +13,258 @@
     <aside class="sidebar">
       <div class="brand">
         <div class="logo">S</div>
-        <div class="brandText">
+        <div>
           <div class="brandName">SusAbility</div>
-          <div class="brandSub">Credibility assistant</div>
+          <div class="brandSub">Credibility & Reliability Dashboard</div>
         </div>
       </div>
 
-      <nav class="sideNav" aria-label="Dashboard navigation">
+      <nav class="sideNav">
         <button class="sideItem sideActive" data-route="dashboard">Dashboard</button>
         <button class="sideItem" data-route="settings">Settings</button>
       </nav>
     </aside>
 
     <main class="main">
-      <!-- DASHBOARD -->
-      <section id="route-dashboard" class="route">
-        <h1>Hi there! 👋</h1>
+      <!-- DASHBOARD ROUTE -->
+      <section id="route-dashboard">
+        <h1>Hi there! </h1>
         <p class="muted">Here’s a summary of what SusAbility found for your current page.</p>
 
-        <div class="grid">
-          <div class="card">
+        <!-- NEW TOOLBAR -->
+        <div class="dashboardToolbar">
+          <div class="toolbarGroup">
+            <button id="btnSaveLayout1" class="sideItem">Save Layout 1</button>
+            <button id="btnLoadLayout1" class="sideItem">Load Layout 1</button>
+            <button id="btnSaveLayout2" class="sideItem">Save Layout 2</button>
+            <button id="btnLoadLayout2" class="sideItem">Load Layout 2</button>
+            <button id="btnResetLayout" class="sideItem">Default Layout</button>
+          </div>
+          <div class="mutedSmall" id="layoutStatus">
+            Drag cards to rearrange your dashboard.
+          </div>
+        </div>
+
+        <div class="grid" id="dashboardGrid">
+          <!-- OVERALL SCORE -->
+          <div class="card dashboardCard" data-card-id="overall" draggable="true">
             <div class="cardTitle">Overall Score</div>
             <div class="scoreRow">
               <div class="scoreBig" id="dashScore">--</div>
               <div class="pill" id="dashAdvisory">Neutral</div>
             </div>
-            <div class="mutedSmall" id="dashUrl">No page loaded yet.</div>
+            <div class="mutedSmall" id="dashUrl">No page analyzed yet.</div>
           </div>
 
-          <div class="card">
-            <div class="cardTitle">Signals</div>
+          <!-- SIGNALS -->
+          <div class="card dashboardCard" data-card-id="signals" draggable="true">
+            <div class="cardTitle">Article Details</div>
             <ul class="list" id="dashSignals"></ul>
           </div>
 
-          <div class="card">
-            <div class="cardTitle">Breakdown</div>
+          <!-- BREAKDOWN -->
+          <div class="card dashboardCard" data-card-id="breakdown" draggable="true">
+            <div class="cardTitle">Score Breakdown</div>
             <ul class="list" id="dashBreakdown"></ul>
           </div>
 
-          <div class="card">
-            <div class="cardTitle">Outbound References</div>
-            <div class="chipScroll">
-              <ul class="chipList" id="dashRefs"></ul>
+
+          <!-- CHART -->
+          <div class="card dashboardCard chartCard" data-card-id="chart" draggable="true">
+            <div class="cardTitle">Political Placement & Reliability Chart</div>
+            <canvas id="biasChart" width="900" height="520"></canvas>
+            <div class="chartSummaryBlock" id="chartSummary">
+              <div class="summaryRow">
+                <span class="summaryLabel">Current source</span>
+                <span class="summaryValue">No page analyzed yet.</span>
+              </div>
+              <div class="summaryRow">
+                <span class="summaryLabel">Political placement</span>
+                <span class="summaryValue">--</span>
+              </div>
+              <div class="summaryRow">
+                <span class="summaryLabel">Reliability score</span>
+                <span class="summaryValue">--</span>
+              </div>
+              <div class="summaryRow">
+                <span class="summaryLabel">Rated linked sources shown</span>
+                <span class="summaryValue">--</span>
+              </div>
+              <div class="summaryRow">
+                <span class="summaryLabel">Seeded comparison sources</span>
+                <span class="summaryValue">--</span>
+              </div>
             </div>
-          </div>
-          
-          <div class="card">
-            <div class="cardTitle">Political Bias & Reliability Chart</div>
-            <canvas id="biasChart" width="900" height="500" style="border:1px solid #ddd; max-width:100%;"></canvas>
-            <div class="mutedSmall" id="chartSummary">Run Analyze Page first.</div>
-            <ul class="list" id="whyList"></ul>
+            <div class="whySummaryBlock" id="whySummary">
+              <div class="summaryRow">
+                <span class="summaryLabel">Starting position</span>
+                <span class="summaryValue">--</span>
+              </div>
+              <div class="summaryRow">
+                <span class="summaryLabel">Linked-source pattern</span>
+                <span class="summaryValue">--</span>
+              </div>
+              <div class="summaryRow">
+                <span class="summaryLabel">Article wording shift</span>
+                <span class="summaryValue">--</span>
+              </div>
+              <div class="summaryRow">
+                <span class="summaryLabel">Reliability explanation</span>
+                <span class="summaryValue">--</span>
+              </div>
+              <div class="summaryRow">
+                <span class="summaryLabel">Ignored links</span>
+                <span class="summaryValue">--</span>
+              </div>
+            </div>
+            <div class="detailsToggleWrap">
+              <button id="toggleSourceDetails" class="sideItem detailsToggleBtn" type="button">
+                Show source details
+              </button>
+            </div>
+
+            <div id="sourceDetailsPanel" class="sourceDetailsPanel hidden">
+              <div class="refsSection">
+                <div class="refsHeader">Sources that influenced placement</div>
+                <div class="mutedSmall">
+                  These linked sources were reviewed and contributed to the source-pattern analysis.
+                </div>
+                <div id="dashRefsUsed" class="sourceTable"></div>
+              </div>
+
+              <div class="refsSection">
+                <div class="refsHeader">Sources ignored</div>
+                <div class="mutedSmall">
+                  These links were found on the page but were not used because they were same-site, same-family, social, support, login, or other non-editorial links.
+                </div>
+                <div id="dashRefsIgnored" class="sourceTable"></div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      <!-- SETTINGS -->
-      <section id="route-settings" class="route hidden">
+      <!-- SETTINGS ROUTE -->
+      <section id="route-settings" class="hidden">
         <h1>Settings</h1>
-        <p class="muted">Control how SusAbility gathers and displays information.</p>
+        <p class="muted">Manage dashboard display, database tools, and analysis preferences.</p>
 
         <div class="card">
+          <div class="cardTitle">Appearance</div>
+
+          <div class="settingRow">
+            <div>
+              <div class="settingTitle">Dark mode</div>
+              <div class="mutedSmall">Switch between light and dark dashboard themes.</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="setDarkMode" />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 16px;">
+          <div class="cardTitle">Dashboard Display</div>
+
+          <div class="settingRow">
+            <div>
+              <div class="settingTitle">Show / hide cards</div>
+              <div class="mutedSmall">Choose which sections appear on the dashboard.</div>
+            </div>
+          </div>
+
+          <div class="cardToggleGrid" id="cardToggleGrid">
+            <label><input type="checkbox" data-toggle-card="overall" checked /> Overall Score</label>
+            <label><input type="checkbox" data-toggle-card="signals" checked /> Article Details</label>
+            <label><input type="checkbox" data-toggle-card="breakdown" checked /> Score Breakdown</label>
+            <label><input type="checkbox" data-toggle-card="chart" checked /> Placement Chart</label>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 16px;">
+          <div class="cardTitle">Analysis Options</div>
+
           <div class="settingRow">
             <div>
               <div class="settingTitle">Use API fallbacks</div>
-              <div class="mutedSmall">If a field is missing locally, try APIs (Crossref / Semantic Scholar / RapidAPI).</div>
+              <div class="mutedSmall">Allow Crossref, Semantic Scholar, and RapidAPI to help fill missing metadata.</div>
             </div>
             <label class="switch">
-              <input type="checkbox" id="setUseApis" checked />
+              <input type="checkbox" id="setUseApis" />
               <span class="slider"></span>
             </label>
           </div>
 
           <div class="settingRow">
             <div>
-              <div class="settingTitle">Show outbound references</div>
-              <div class="mutedSmall">Display outbound links extracted from the page.</div>
+              <div class="settingTitle">Show linked-source details</div>
+              <div class="mutedSmall">Display linked-source details after analysis.</div>
             </div>
             <label class="switch">
-              <input type="checkbox" id="setShowRefs" checked />
+              <input type="checkbox" id="setShowRefs" />
               <span class="slider"></span>
             </label>
           </div>
 
           <div class="settingRow">
             <div>
-              <div class="settingTitle">Max references</div>
-            </div>
-              <div class="mutedSmall">Limit how many outbound links are shown.</div>
+              <div class="settingTitle">Max linked sources shown</div>
+              <div class="mutedSmall">Limit how many linked sources are shown in the popup and dashboard.</div>
             </div>
             <input class="num" type="number" id="setMaxRefs" min="1" max="50" value="10" />
           </div>
-        <div class="settingRow">
-          <div>
-            <div class="settingTitle">Database baselines</div>
-            <div class="mutedSmall">Reload the seeded domain baselines (useful after editing seed_sources.json).</div>
-            <div class="mutedSmall" id="dbStatus">Domains in DB: --</div>
+        </div>
+
+        <div class="card" style="margin-top: 16px;">
+          <div class="cardTitle">Database Tools</div>
+
+          <div class="settingRow">
+            <div>
+              <div class="settingTitle">Database status</div>
+              <div class="mutedSmall" id="dbStatus">Checking database…</div>
+            </div>
           </div>
 
-          <div style="display:flex; gap:8px; align-items:center;">
-            <button id="btnReseedDb" class="num" type="button" style="cursor:pointer;">Reseed</button>
-            <button id="btnClearDb" class="num" type="button" style="cursor:pointer;">Clear</button>
+          <div class="settingRow">
+            <div>
+              <div class="settingTitle">Reseed local database</div>
+              <div class="mutedSmall">Reload your local source database from the seed file.</div>
+            </div>
+            <button class="sideItem" id="btnReseedDb">Reseed DB</button>
+          </div>
+
+          <div class="settingRow">
+            <div>
+              <div class="settingTitle">Clear local database</div>
+              <div class="mutedSmall">Remove current seeded sources from IndexedDB.</div>
+            </div>
+            <button class="sideItem" id="btnClearDb">Clear DB</button>
           </div>
         </div>
 
-        <div class="settingRow">
-          <div>
-            <div class="settingTitle">MBFC Baselines (one-time import)</div>
-            <div class="mutedSmall">Fetch Media Bias Fact Check ratings once and store them locally (bias + factuality).</div>
-            <div class="mutedSmall" id="mbfcStatus">Not imported yet.</div>
-          </div>
-        </div>
+        <div class="card" style="margin-top: 16px;">
+          <div class="cardTitle">MBFC Import</div>
 
-        <div class="settingRow">
-          <div>
-            <div class="settingTitle">RapidAPI Key</div>
-            <div class="mutedSmall">Stored locally. Used only when importing MBFC data.</div>
+          <div class="settingRow">
+            <div>
+              <div class="settingTitle">MBFC API Key</div>
+              <div class="mutedSmall">Optional RapidAPI key for importing MBFC data.</div>
+            </div>
+            <input type="text" id="mbfcApiKey" class="num" style="width: 260px;" placeholder="Enter RapidAPI key" />
           </div>
-          <input class="num" id="mbfcApiKey" type="password" placeholder="Paste RapidAPI key" />
-        </div>
 
-        <div class="settingRow">
-          <div>
-            <div class="settingTitle">Import MBFC database</div>
-            <div class="mutedSmall">This overwrites the local baseline database with MBFC ratings.</div>
+          <div class="settingRow">
+            <div>
+              <div class="settingTitle">Fetch MBFC dataset</div>
+              <div class="mutedSmall" id="mbfcStatus">Not started.</div>
+            </div>
+            <button class="sideItem" id="btnFetchMbfc">Fetch MBFC</button>
           </div>
-          <button id="btnFetchMbfc" class="num" type="button" style="cursor:pointer;">Fetch &amp; Seed</button>
-        </div>  
         </div>
-              </section>
-            </main>
-          </div>
+      </section>
+    </main>
+  </div>
 
   <script src="dashboard.js"></script>
 </body>
